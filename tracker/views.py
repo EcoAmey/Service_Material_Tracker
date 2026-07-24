@@ -12,6 +12,7 @@ from .forms import (
     ElectronicsAssignmentForm,
     ElectronicsProceedForm,
     ForwardDispatchForm,
+    MotorDispositionForm,
     ReceiveMaterialForm,
     WarehouseRemarksForm,
 )
@@ -225,7 +226,7 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
 
     login_url = 'tracker:login'
 
-    ACTIONS = {'receive', 'dispatch_to_oem', 'add_to_stock'}
+    ACTIONS = {'receive', 'dispatch_to_oem', 'scrap', 'add_to_stock'}
 
     def _eligible_items(self, action, selected_pks):
         candidates = _get_main_warehouse_items().filter(pk__in=selected_pks)
@@ -234,7 +235,7 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
                 item for item in candidates
                 if item.is_pending_for_main_warehouse and not item.is_motor_or_pump
             ]
-        if action == 'dispatch_to_oem':
+        if action in ('dispatch_to_oem', 'scrap'):
             return [
                 item for item in candidates
                 if item.is_pending_for_main_warehouse and item.is_motor_or_pump
@@ -272,6 +273,8 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
                 status='with_service_desk',
                 received_date=form.cleaned_data['received_date'],
                 received_serial_matches=form.cleaned_data['serial_matches'] == 'yes',
+                received_serial_no=form.cleaned_data['received_serial_no'],
+                warehouse_reservation_no=form.cleaned_data['reservation_no'],
                 status_remarks=remarks,
                 status_updated_by=request.user,
                 status_updated_at=timezone.now(),
@@ -281,22 +284,42 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
             messages.success(request, f'Received {len(items)} item(s) and assigned to Service Desk.')
             return redirect('tracker:main_warehouse_home')
 
-        # dispatch_to_oem and add_to_stock are both simple status + remarks updates.
+        if action in ('dispatch_to_oem', 'scrap'):
+            form = MotorDispositionForm(request.POST)
+            if not form.is_valid():
+                messages.error(request, 'Please correct the errors in the form.')
+                return redirect('tracker:main_warehouse_home')
+
+            new_status = 'dispatched_to_oem' if action == 'dispatch_to_oem' else 'scrapped'
+            remarks = form.cleaned_data['remarks']
+            DispatchItem.objects.filter(pk__in=item_pks).update(
+                status=new_status,
+                status_remarks=remarks,
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+                oem_inward_reservation_no=form.cleaned_data['inward_reservation_no'],
+                oem_outward_reservation_no=form.cleaned_data['outward_reservation_no'],
+            )
+            for item in items:
+                record_status_event(item, new_status, remarks, request.user)
+            messages.success(request, f'Updated {len(items)} item(s).')
+            return redirect('tracker:main_warehouse_home')
+
+        # add_to_stock is a simple status + remarks update.
         form = WarehouseRemarksForm({'remarks': request.POST.get('simple_remarks', '')})
         if not form.is_valid():
             messages.error(request, 'Please correct the errors in the form.')
             return redirect('tracker:main_warehouse_home')
 
-        new_status = 'dispatched_to_oem' if action == 'dispatch_to_oem' else 'added_to_stock'
         remarks = form.cleaned_data['remarks']
         DispatchItem.objects.filter(pk__in=item_pks).update(
-            status=new_status,
+            status='added_to_stock',
             status_remarks=remarks,
             status_updated_by=request.user,
             status_updated_at=timezone.now(),
         )
         for item in items:
-            record_status_event(item, new_status, remarks, request.user)
+            record_status_event(item, 'added_to_stock', remarks, request.user)
         messages.success(request, f'Updated {len(items)} item(s).')
         return redirect('tracker:main_warehouse_home')
 

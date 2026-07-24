@@ -226,6 +226,13 @@ class DispatchItem(models.Model):
     # Set once, by the main warehouse's "Receive" action.
     received_date = models.DateField(null=True, blank=True)
     received_serial_matches = models.BooleanField(null=True, blank=True)
+    received_serial_no = models.CharField(max_length=255, blank=True, null=True)
+    warehouse_reservation_no = models.CharField(max_length=255, blank=True, null=True)
+
+    # Set once, by the main warehouse's "Dispatch to OEM" / "Scrap" action
+    # on a motor/pump.
+    oem_inward_reservation_no = models.CharField(max_length=255, blank=True, null=True)
+    oem_outward_reservation_no = models.CharField(max_length=255, blank=True, null=True)
 
     # Service Desk's mandatory inspection checklist, set once when assigning
     # onward to Electronics.

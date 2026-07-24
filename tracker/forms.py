@@ -58,13 +58,27 @@ class ReceiveMaterialForm(forms.Form):
 
     received_date = forms.DateField()
     serial_matches = forms.ChoiceField(choices=SERIAL_CHOICES)
+    received_serial_no = forms.CharField(max_length=255, required=False, label='Received serial number')
+    reservation_no = forms.CharField(max_length=255, label='Reservation number')
     remarks = forms.CharField(widget=forms.Textarea, required=False)
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get('serial_matches') == 'no' and not cleaned.get('remarks', '').strip():
-            raise forms.ValidationError('Please note the serial mismatch in the remarks.')
+        if cleaned.get('serial_matches') == 'no':
+            if not cleaned.get('remarks', '').strip():
+                raise forms.ValidationError('Please note the serial mismatch in the remarks.')
+            if not cleaned.get('received_serial_no', '').strip():
+                raise forms.ValidationError('Please enter the received serial number.')
         return cleaned
+
+
+class MotorDispositionForm(forms.Form):
+    """Warehouse deciding a motor/pump's fate -- OEM repair or scrap --
+    both requiring an inward and outward reservation number."""
+
+    inward_reservation_no = forms.CharField(max_length=255, label='Inward reservation number')
+    outward_reservation_no = forms.CharField(max_length=255, label='Outward reservation number')
+    remarks = forms.CharField(widget=forms.Textarea, required=False)
 
 
 class ElectronicsAssignmentForm(forms.Form):

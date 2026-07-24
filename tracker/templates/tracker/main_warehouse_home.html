@@ -107,6 +107,14 @@
                             {% if item.received_date %}
                                 <div class="field-pair"><dt>Received On</dt><dd>{{ item.received_date|date:"d M Y" }}</dd></div>
                                 <div class="field-pair"><dt>Serial Match</dt><dd>{% if item.received_serial_matches %}Yes{% else %}No{% endif %}</dd></div>
+                                {% if item.received_serial_no %}
+                                    <div class="field-pair"><dt>Received S/N</dt><dd>{{ item.received_serial_no }}</dd></div>
+                                {% endif %}
+                                <div class="field-pair"><dt>Reservation No.</dt><dd>{{ item.warehouse_reservation_no }}</dd></div>
+                            {% endif %}
+                            {% if item.oem_inward_reservation_no or item.oem_outward_reservation_no %}
+                                <div class="field-pair"><dt>Inward Reservation No.</dt><dd>{{ item.oem_inward_reservation_no }}</dd></div>
+                                <div class="field-pair"><dt>Outward Reservation No.</dt><dd>{{ item.oem_outward_reservation_no }}</dd></div>
                             {% endif %}
                             {% if not item.is_pending_for_main_warehouse %}
                                 <div class="field-pair"><dt>Action Remarks</dt><dd>{{ item.status_remarks|default:"-" }}</dd></div>
@@ -128,6 +136,7 @@
         <div id="action-buttons">
             <button type="button" id="receive-btn" disabled>Receive</button>
             <button type="button" id="oem-btn" disabled>Dispatch to OEM</button>
+            <button type="button" id="scrap-btn" disabled>Scrap</button>
             <button type="button" id="stock-btn" disabled>Add to Stock</button>
         </div>
     </div>
@@ -161,6 +170,14 @@
                     <label><input type="radio" name="serial_matches" id="id_serial_matches_no" value="no" form="action-form"> Does not match</label>
                 </div>
             </div>
+            <div class="field" id="received-serial-no-field" hidden>
+                <label for="id_received_serial_no">Received serial number</label>
+                <input type="text" name="received_serial_no" id="id_received_serial_no" form="action-form">
+            </div>
+            <div class="field">
+                <label for="id_reservation_no">Reservation number</label>
+                <input type="text" name="reservation_no" id="id_reservation_no" form="action-form">
+            </div>
             <div class="field">
                 <label for="id_receive_remarks">Remarks (required if it does not match)</label>
                 <textarea name="remarks" id="id_receive_remarks" form="action-form" rows="3"></textarea>
@@ -171,8 +188,30 @@
             </div>
         </div>
     </dialog>
+
+    <dialog id="motor-dialog">
+        <div class="dialog-content">
+            <h2 id="motor-dialog-title">Dispatch to OEM</h2>
+            <div class="field">
+                <label for="id_inward_reservation_no">Inward reservation number</label>
+                <input type="text" name="inward_reservation_no" id="id_inward_reservation_no" form="action-form">
+            </div>
+            <div class="field">
+                <label for="id_outward_reservation_no">Outward reservation number</label>
+                <input type="text" name="outward_reservation_no" id="id_outward_reservation_no" form="action-form">
+            </div>
+            <div class="field">
+                <label for="id_motor_remarks">Remarks (optional)</label>
+                <textarea name="remarks" id="id_motor_remarks" form="action-form" rows="3"></textarea>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="motor-cancel" class="btn-cancel">Cancel</button>
+                <button type="submit" form="action-form" class="btn-submit">Confirm</button>
+            </div>
+        </div>
+    </dialog>
 {% endblock %}
 
 {% block scripts %}
-    <script src="{% static 'tracker/main_warehouse.js' %}?v=3"></script>
+    <script src="{% static 'tracker/main_warehouse.js' %}?v=4"></script>
 {% endblock %}

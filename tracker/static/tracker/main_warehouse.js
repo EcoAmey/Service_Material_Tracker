@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const countLabel = document.getElementById('selected-count');
   const receiveBtn = document.getElementById('receive-btn');
   const oemBtn = document.getElementById('oem-btn');
+  const scrapBtn = document.getElementById('scrap-btn');
   const stockBtn = document.getElementById('stock-btn');
   const mismatchWarning = document.getElementById('mismatch-warning');
   const hiddenFieldsContainer = document.getElementById('selected-items-fields');
@@ -22,12 +23,20 @@ document.addEventListener('DOMContentLoaded', function () {
   const remarksCancel = document.getElementById('remarks-cancel');
   const receiveDialog = document.getElementById('receive-dialog');
   const receiveCancel = document.getElementById('receive-cancel');
+  const motorDialog = document.getElementById('motor-dialog');
+  const motorDialogTitle = document.getElementById('motor-dialog-title');
+  const motorCancel = document.getElementById('motor-cancel');
+  const receivedSerialNoField = document.getElementById('received-serial-no-field');
+  const receivedSerialNoInput = document.getElementById('id_received_serial_no');
+  const serialMatchesYes = document.getElementById('id_serial_matches_yes');
+  const serialMatchesNo = document.getElementById('id_serial_matches_no');
 
   // The receive dialog's fields share the same <form> as the simple remarks
   // dialog, so a required field in the closed dialog would silently block
   // submission of the other one. Toggle `required` based on which dialog
   // is actually open.
-  const receiveRequiredFields = [document.getElementById('id_received_date')];
+  const receiveRequiredFields = [document.getElementById('id_received_date'), document.getElementById('id_reservation_no')];
+  const motorRequiredFields = [document.getElementById('id_inward_reservation_no'), document.getElementById('id_outward_reservation_no')];
 
   function setReceiveFieldsRequired(isRequired) {
     receiveRequiredFields.forEach((field) => {
@@ -35,7 +44,23 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  function setMotorFieldsRequired(isRequired) {
+    motorRequiredFields.forEach((field) => {
+      if (field) field.required = isRequired;
+    });
+  }
+
+  function updateSerialNoVisibility() {
+    const mismatched = !!(serialMatchesNo && serialMatchesNo.checked);
+    if (receivedSerialNoField) receivedSerialNoField.hidden = !mismatched;
+    if (receivedSerialNoInput) receivedSerialNoInput.required = mismatched;
+  }
+
+  if (serialMatchesYes) serialMatchesYes.addEventListener('change', updateSerialNoVisibility);
+  if (serialMatchesNo) serialMatchesNo.addEventListener('change', updateSerialNoVisibility);
+
   setReceiveFieldsRequired(false);
+  setMotorFieldsRequired(false);
 
   let activeTab = 'incoming';
 
@@ -52,7 +77,7 @@ document.addEventListener('DOMContentLoaded', function () {
       row.classList.toggle('selected', !!(cb && cb.checked));
     });
 
-    [receiveBtn, oemBtn, stockBtn].forEach((btn) => {
+    [receiveBtn, oemBtn, scrapBtn, stockBtn].forEach((btn) => {
       btn.hidden = true;
       btn.disabled = true;
     });
@@ -69,11 +94,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const group = selected[0].dataset.actionGroup;
-    const btn = { receive: receiveBtn, dispatch_to_oem: oemBtn, add_to_stock: stockBtn }[group];
-    if (btn) {
+    const btns = { receive: [receiveBtn], dispatch_to_oem: [oemBtn, scrapBtn], add_to_stock: [stockBtn] }[group] || [];
+    btns.forEach((btn) => {
       btn.hidden = false;
       btn.disabled = false;
-    }
+    });
   }
 
   checkboxes.forEach((cb) => cb.addEventListener('change', updateSelection));
@@ -138,9 +163,25 @@ document.addEventListener('DOMContentLoaded', function () {
     remarksDialog.showModal();
   }
 
+  function openMotorDialog(action, title) {
+    setMotorFieldsRequired(true);
+    actionField.value = action;
+    motorDialogTitle.textContent = title;
+    document.getElementById('id_inward_reservation_no').value = '';
+    document.getElementById('id_outward_reservation_no').value = '';
+    document.getElementById('id_motor_remarks').value = '';
+    populateSelectedFields();
+    motorDialog.showModal();
+  }
+
   if (oemBtn) {
     oemBtn.addEventListener('click', function () {
-      openRemarksDialog('dispatch_to_oem', 'Dispatch to OEM');
+      openMotorDialog('dispatch_to_oem', 'Dispatch to OEM');
+    });
+  }
+  if (scrapBtn) {
+    scrapBtn.addEventListener('click', function () {
+      openMotorDialog('scrap', 'Scrap');
     });
   }
   if (stockBtn) {
@@ -155,7 +196,10 @@ document.addEventListener('DOMContentLoaded', function () {
       document.getElementById('id_received_date').value = '';
       document.getElementById('id_serial_matches_yes').checked = false;
       document.getElementById('id_serial_matches_no').checked = false;
+      document.getElementById('id_received_serial_no').value = '';
+      document.getElementById('id_reservation_no').value = '';
       document.getElementById('id_receive_remarks').value = '';
+      updateSerialNoVisibility();
       populateSelectedFields();
       receiveDialog.showModal();
     });
@@ -170,6 +214,12 @@ document.addEventListener('DOMContentLoaded', function () {
     receiveCancel.addEventListener('click', function () {
       setReceiveFieldsRequired(false);
       receiveDialog.close();
+    });
+  }
+  if (motorCancel) {
+    motorCancel.addEventListener('click', function () {
+      setMotorFieldsRequired(false);
+      motorDialog.close();
     });
   }
 
