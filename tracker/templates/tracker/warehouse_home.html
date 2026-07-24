@@ -1,0 +1,201 @@
+{% extends 'tracker/base.html' %}
+{% load static %}
+
+{% block content %}
+    {% if not location %}
+        <p class="empty-state">No warehouse location is set up for your account yet. Contact an administrator.</p>
+    {% else %}
+        <div class="toolbar">
+            <div class="search-field">
+                <input type="search" id="material-search" placeholder="Search by service ID, material, serial...">
+            </div>
+            <div class="filter-field">
+                <select id="part-type-filter">
+                    <option value="">All part types</option>
+                    <option value="power_card">Power Card</option>
+                    <option value="control_card">Control Card</option>
+                    <option value="material">Motor/Pump</option>
+                </select>
+            </div>
+            <div class="date-range">
+                <input type="date" id="date-from" aria-label="From date">
+                <span>to</span>
+                <input type="date" id="date-to" aria-label="To date">
+            </div>
+            <div class="sort-field">
+                <select id="sort-order">
+                    <option value="desc">Newest first</option>
+                    <option value="asc">Oldest first</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button type="button" class="tab-btn active" data-tab="dispatched">Incoming</button>
+            <button type="button" class="tab-btn" data-tab="tested_ok">Tested OK</button>
+            <button type="button" class="tab-btn" data-tab="repaired">Repaired</button>
+            <button type="button" class="tab-btn" data-tab="dispatched_to_oem">Dispatched to OEM</button>
+            <button type="button" class="tab-btn" data-tab="dispatched_to_warehouse">Dispatched to Warehouse</button>
+        </div>
+
+        <form id="action-form" method="post" action="{% url 'tracker:warehouse_action' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" id="action-field" value="">
+            <div id="selected-items-fields"></div>
+
+            <div class="table-wrapper">
+                <div class="material-table compact cols-regwarehouse">
+                    <div class="table-header-row">
+                        <div></div>
+                        <div>Service ID</div>
+                        <div>Machine No</div>
+                        <div>Material</div>
+                        <div>Faulty S/N</div>
+                        <div>LR No.</div>
+                        <div>Challan No.</div>
+                        <div>Status</div>
+                        <div>Dispatched On</div>
+                        <div></div>
+                    </div>
+
+                    {% for item in incoming_items %}
+                        <div class="table-row"
+                             data-status="{{ item.status }}"
+                             data-category="{% if item.is_motor_or_pump %}motor_pump{% else %}card{% endif %}"
+                             data-part-type="{{ item.part_type }}"
+                             data-date="{{ item.dispatch.dispatched_at|date:'U' }}"
+                             data-search="{{ item.service_id|lower }} {{ item.material_name|lower }} {{ item.faulty_serial|lower }} {{ item.controller_serial|lower }} {{ item.farmer_name|lower }} {{ item.location|lower }}">
+                            <div class="row-main">
+                                <div class="col-check">
+                                    {% if item.status == 'dispatched' %}
+                                        <input type="checkbox" class="material-select" value="{{ item.pk }}" data-category="{% if item.is_motor_or_pump %}motor_pump{% else %}card{% endif %}">
+                                    {% endif %}
+                                </div>
+                                <div class="col" data-label="Service ID">{{ item.service_id }}</div>
+                                <div class="col" data-label="Machine No">{{ item.controller_serial }}</div>
+                                <div class="col" data-label="Material">
+                                    <span class="material-name">{{ item.material_name }}</span>
+                                    <span class="part-type">{{ item.get_part_type_display }}</span>
+                                </div>
+                                <div class="col" data-label="Faulty S/N">{{ item.faulty_serial }}</div>
+                                <div class="col" data-label="LR No.">{{ item.dispatch.lr_number }}</div>
+                                <div class="col" data-label="Challan No.">{{ item.dispatch.delivery_challan_number }}</div>
+                                <div class="col" data-label="Status">
+                                    <span class="status-badge {% if item.status == 'dispatched' %}pending{% else %}dispatched{% endif %}">{{ item.get_status_display }}</span>
+                                </div>
+                                <div class="col" data-label="Dispatched On">{{ item.dispatch.dispatched_at|date:"d M Y" }}</div>
+                                <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
+                            </div>
+                            <div class="row-details" hidden>
+                                <div class="field-pair"><dt>SI Details</dt><dd>{{ item.si_details }}</dd></div>
+                                <div class="field-pair"><dt>Farmer</dt><dd>{{ item.farmer_name }}</dd></div>
+                                <div class="field-pair"><dt>Location</dt><dd>{{ item.location }}</dd></div>
+                                <div class="field-pair"><dt>Replacement Date</dt><dd>{{ item.replacement_date|date:"d M Y" }}</dd></div>
+                                {% if item.dispatch.dispatched_by.name == item.service_person_name %}
+                                    <div class="field-pair"><dt>By</dt><dd>{{ item.service_person_name }}</dd></div>
+                                {% else %}
+                                    <div class="field-pair"><dt>Service Person</dt><dd>{{ item.service_person_name }}</dd></div>
+                                    <div class="field-pair"><dt>Dispatched By</dt><dd>{{ item.dispatch.dispatched_by.name }}</dd></div>
+                                {% endif %}
+                                <div class="field-pair"><dt>Pickup No.</dt><dd>{{ item.dispatch.pickup_number }}</dd></div>
+                                <div class="field-pair"><dt>Delivery Partner</dt><dd>{{ item.dispatch.delivery_partner.name }}</dd></div>
+                                {% if item.dispatch.remarks %}
+                                    <div class="field-pair"><dt>Remarks</dt><dd>{{ item.dispatch.remarks }}</dd></div>
+                                {% endif %}
+                                {% if item.status != 'dispatched' %}
+                                    <div class="field-pair"><dt>Action Remarks</dt><dd>{{ item.status_remarks|default:"-" }}</dd></div>
+                                    <div class="field-pair"><dt>Updated By</dt><dd>{{ item.status_updated_by.name }}</dd></div>
+                                    <div class="field-pair"><dt>Updated On</dt><dd>{{ item.status_updated_at|date:"d M Y, H:i" }}</dd></div>
+                                {% endif %}
+                                {% if item.forward_dispatch %}
+                                    <div class="field-pair"><dt>Forwarded To</dt><dd>{{ item.forward_dispatch.destination.name }}</dd></div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% empty %}
+                        <p class="empty-state">No materials have been dispatched to {{ location.name }} yet.</p>
+                    {% endfor %}
+                </div>
+            </div>
+            <p class="empty-state" id="no-items-message" hidden>Nothing here.</p>
+        </form>
+
+        <div class="dispatch-bar">
+            <span class="count" id="selected-count">0 selected</span>
+            <div id="action-buttons">
+                <button type="button" id="forward-btn" disabled>Dispatch</button>
+                <button type="button" id="tested-ok-btn" disabled>Tested OK</button>
+                <button type="button" id="repair-btn" disabled>Repair</button>
+                <button type="button" id="oem-btn" disabled>Dispatch to OEM</button>
+            </div>
+        </div>
+        <p class="mismatch-warning" id="mismatch-warning" hidden>Select items of the same type together (cards/RMU, or motor/pump).</p>
+
+        <dialog id="remarks-dialog">
+            <div class="dialog-content">
+                <h2 id="remarks-dialog-title">Update status</h2>
+                <div class="field">
+                    <label for="id_simple_remarks">Remarks (optional)</label>
+                    <textarea name="simple_remarks" id="id_simple_remarks" form="action-form" rows="3"></textarea>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" id="remarks-cancel" class="btn-cancel">Cancel</button>
+                    <button type="submit" form="action-form" class="btn-submit">Confirm</button>
+                </div>
+            </div>
+        </dialog>
+
+        <dialog id="forward-dialog">
+            <div class="dialog-content">
+                <h2>Dispatch onward</h2>
+                <div class="field">
+                    <label for="id_fwd_pickup_number">Pickup Number</label>
+                    <input type="text" name="pickup_number" id="id_fwd_pickup_number" form="action-form" required>
+                </div>
+                <div class="field">
+                    <label for="id_fwd_lr_number">LR Number</label>
+                    <input type="text" name="lr_number" id="id_fwd_lr_number" form="action-form" required>
+                </div>
+                <div class="field">
+                    <label for="id_fwd_delivery_challan_number">Delivery Challan Number</label>
+                    <input type="text" name="delivery_challan_number" id="id_fwd_delivery_challan_number" form="action-form" required>
+                </div>
+                <div class="field">
+                    <label for="id_fwd_delivery_partner">Delivery Partner</label>
+                    <select name="delivery_partner" id="id_fwd_delivery_partner" form="action-form">
+                        <option value="" selected>Select delivery partner</option>
+                        {% for partner in delivery_partners %}
+                            <option value="{{ partner.pk }}">{{ partner.name }}</option>
+                        {% endfor %}
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="field" id="fwd-custom-partner-field" hidden>
+                    <label for="id_fwd_custom_delivery_partner">Specify delivery partner</label>
+                    <input type="text" name="custom_delivery_partner" id="id_fwd_custom_delivery_partner" form="action-form">
+                </div>
+                <div class="field">
+                    <label for="id_fwd_destination">Destination (Warehouse)</label>
+                    <select name="destination" id="id_fwd_destination" form="action-form" required>
+                        <option value="" disabled selected>Select destination</option>
+                        {% for w in warehouse_destinations %}
+                            <option value="{{ w.pk }}">{{ w.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="id_fwd_remarks">Remarks</label>
+                    <textarea name="remarks" id="id_fwd_remarks" form="action-form" rows="2"></textarea>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" id="forward-cancel" class="btn-cancel">Cancel</button>
+                    <button type="submit" form="action-form" class="btn-submit">Confirm Dispatch</button>
+                </div>
+            </div>
+        </dialog>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+    <script src="{% static 'tracker/warehouse.js' %}?v=3"></script>
+{% endblock %}

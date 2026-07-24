@@ -1,0 +1,188 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>Service Material Tracker</title>
+    <link rel="stylesheet" href="/static/tracker/style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="greeting">Ajay More</div>
+        <div class="sub">ajaymore92108038@gmail.com</div>
+        <form method="post" action="/logout/">
+            <input type="hidden" name="csrfmiddlewaretoken" value="YV4CKHVOTECctXeqxVWBWOfFucGUpEUkObHGbwDgV7dDqSAU7Wn0OefUlGNnXvQ8">
+            <button type="submit" class="link-btn">Log out</button>
+        </form>
+    </header>
+
+    
+
+    <div class="search-bar">
+        <input type="search" id="material-search" placeholder="Search by service ID, material, serial...">
+    </div>
+
+    <div class="tabs">
+        <button type="button" class="tab-btn active" data-tab="pending">Pending</button>
+        <button type="button" class="tab-btn" data-tab="dispatched">Dispatched</button>
+    </div>
+
+    <form id="dispatch-form" method="post" action="/dispatch/">
+        <input type="hidden" name="csrfmiddlewaretoken" value="YV4CKHVOTECctXeqxVWBWOfFucGUpEUkObHGbwDgV7dDqSAU7Wn0OefUlGNnXvQ8">
+        <div id="selected-items-fields"></div>
+
+        <div class="material-list">
+            
+                <label class="material-card" data-status="pending" data-search="e2642980 ecore pcb et14250717001735 ezmc250613910 dayanand jotiram more mundhewadi, pandharpur, solapur">
+                    
+                        <input type="checkbox" class="material-select" value="E2642980|power_card">
+                    
+                    <div class="details">
+                        <div class="row1">
+                            <div>
+                                <div class="material-name">eCore PCB</div>
+                                <div class="part-type">Power Card</div>
+                            </div>
+                            
+                                <span class="status-badge pending">Pending</span>
+                            
+                        </div>
+                        <dl>
+                            <dt>Service ID</dt><dd>E2642980</dd>
+                            <dt>Controller S/N</dt><dd>EZMC250613910</dd>
+                            <dt>Faulty S/N</dt><dd>ET14250717001735</dd>
+                            <dt>SI Details</dt><dd>ECOZEN_MSEDCL_MT</dd>
+                            <dt>Farmer</dt><dd>Dayanand Jotiram More</dd>
+                            <dt>Location</dt><dd>Mundhewadi, Pandharpur, Solapur</dd>
+                            <dt>Service Person</dt><dd>Ajay_Solapur_MH1</dd>
+                            <dt>Replacement Date</dt><dd>15 Jul 2026</dd>
+                        </dl>
+                    </div>
+                </label>
+            
+                <label class="material-card" data-status="pending" data-search="e2642980 ecore pcb et20250715001735 ezmc250613910 dayanand jotiram more mundhewadi, pandharpur, solapur">
+                    
+                        <input type="checkbox" class="material-select" value="E2642980|control_card">
+                    
+                    <div class="details">
+                        <div class="row1">
+                            <div>
+                                <div class="material-name">eCore PCB</div>
+                                <div class="part-type">Control Card</div>
+                            </div>
+                            
+                                <span class="status-badge pending">Pending</span>
+                            
+                        </div>
+                        <dl>
+                            <dt>Service ID</dt><dd>E2642980</dd>
+                            <dt>Controller S/N</dt><dd>EZMC250613910</dd>
+                            <dt>Faulty S/N</dt><dd>ET20250715001735</dd>
+                            <dt>SI Details</dt><dd>ECOZEN_MSEDCL_MT</dd>
+                            <dt>Farmer</dt><dd>Dayanand Jotiram More</dd>
+                            <dt>Location</dt><dd>Mundhewadi, Pandharpur, Solapur</dd>
+                            <dt>Service Person</dt><dd>Ajay_Solapur_MH1</dd>
+                            <dt>Replacement Date</dt><dd>15 Jul 2026</dd>
+                        </dl>
+                    </div>
+                </label>
+            
+                <label class="material-card" data-status="pending" data-search="e2642626 ecozen drive pcb p8010bs230100648 ezmci23012554 omkar khupase bhose, pandharpur, solapur">
+                    
+                        <input type="checkbox" class="material-select" value="E2642626|power_card">
+                    
+                    <div class="details">
+                        <div class="row1">
+                            <div>
+                                <div class="material-name">Ecozen Drive PCB</div>
+                                <div class="part-type">Power Card</div>
+                            </div>
+                            
+                                <span class="status-badge pending">Pending</span>
+                            
+                        </div>
+                        <dl>
+                            <dt>Service ID</dt><dd>E2642626</dd>
+                            <dt>Controller S/N</dt><dd>EZMCI23012554</dd>
+                            <dt>Faulty S/N</dt><dd>P8010BS230100648</dd>
+                            <dt>SI Details</dt><dd>B2C_ADDON</dd>
+                            <dt>Farmer</dt><dd>Omkar Khupase</dd>
+                            <dt>Location</dt><dd>Bhose, Pandharpur, Solapur</dd>
+                            <dt>Service Person</dt><dd>Ajay_Solapur_MH1</dd>
+                            <dt>Replacement Date</dt><dd>15 Jul 2026</dd>
+                        </dl>
+                    </div>
+                </label>
+            
+        </div>
+        <p class="empty-state" id="no-items-message" hidden>Nothing here.</p>
+    </form>
+
+    <div class="dispatch-bar">
+        <span class="count" id="selected-count">0 selected</span>
+        <button type="button" id="open-dispatch-btn" disabled>Dispatch</button>
+    </div>
+
+    <dialog id="dispatch-dialog">
+        <div class="dialog-content">
+            <h2>Dispatch materials</h2>
+            <div class="field">
+                <label for="id_pickup_number">Pickup Number</label>
+                <input type="text" name="pickup_number" id="id_pickup_number" form="dispatch-form" required>
+            </div>
+            <div class="field">
+                <label for="id_lr_number">LR Number</label>
+                <input type="text" name="lr_number" id="id_lr_number" form="dispatch-form" required>
+            </div>
+            <div class="field">
+                <label for="id_delivery_challan_number">Delivery Challan Number</label>
+                <input type="text" name="delivery_challan_number" id="id_delivery_challan_number" form="dispatch-form" required>
+            </div>
+            <div class="field">
+                <label for="id_delivery_partner">Delivery Partner</label>
+                <select name="delivery_partner" id="id_delivery_partner" form="dispatch-form">
+                    <option value="" selected>Select delivery partner</option>
+                    
+                        <option value="5">Bluedart</option>
+                    
+                        <option value="3">Delhivery</option>
+                    
+                        <option value="2">DTDC</option>
+                    
+                        <option value="4">Speedpost</option>
+                    
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="field" id="custom-delivery-partner-field" hidden>
+                <label for="id_custom_delivery_partner">Specify delivery partner</label>
+                <input type="text" name="custom_delivery_partner" id="id_custom_delivery_partner" form="dispatch-form">
+            </div>
+            <div class="field">
+                <label for="id_destination">Destination</label>
+                <select name="destination" id="id_destination" form="dispatch-form" required>
+                    <option value="" disabled selected>Select destination</option>
+                    
+                        <option value="3">EZ_Hisar_Store. (Regional Service Center)</option>
+                    
+                        <option value="4">Pune Warehouse (Warehouse)</option>
+                    
+                        <option value="2">Regional_warehouse1 (Regional Service Center)</option>
+                    
+                </select>
+            </div>
+            <div class="field">
+                <label for="id_remarks">Remarks</label>
+                <textarea name="remarks" id="id_remarks" form="dispatch-form" rows="2"></textarea>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="dispatch-cancel" class="btn-cancel">Cancel</button>
+                <button type="submit" form="dispatch-form" class="btn-submit">Confirm Dispatch</button>
+            </div>
+        </div>
+    </dialog>
+
+    <script src="/static/tracker/dispatch.js"></script>
+</body>
+</html>

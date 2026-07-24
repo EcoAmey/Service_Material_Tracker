@@ -1,0 +1,35 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>{% block title %}Service Material Tracker{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'tracker/style.css' %}?v=11">
+</head>
+<body>
+    <header class="app-header">
+        <img src="{% static 'tracker/ecozen-logo.png' %}" alt="Ecozen" class="header-logo">
+        <div class="header-user">
+            <div class="greeting">{{ user.name }}</div>
+            <div class="sub">{{ user.email }}</div>
+        </div>
+        <form method="post" action="{% url 'tracker:logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="link-btn">Log out</button>
+        </form>
+    </header>
+
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li class="{{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

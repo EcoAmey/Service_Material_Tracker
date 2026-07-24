@@ -1,0 +1,48 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>Service Material Tracker - Login</title>
+    <link rel="stylesheet" href="{% static 'tracker/style.css' %}?v=11">
+</head>
+<body class="auth-page">
+    <div class="auth-card">
+        <h1 class="sr-only">Service Material Tracker - Login</h1>
+        <div class="auth-card-header">
+            <img src="{% static 'tracker/ecozen-logo.png' %}" alt="Ecozen" class="auth-logo">
+        </div>
+        <div class="auth-card-body">
+            {% if form.errors %}
+                <p class="form-error">Invalid email or password.</p>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="underline-field">
+                    <span class="field-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+                    </span>
+                    <div class="underline-input">
+                        <label for="id_username" class="sr-only">Email</label>
+                        <input type="email" name="username" id="id_username" placeholder="Email" required autofocus inputmode="email">
+                    </div>
+                </div>
+                <div class="underline-field">
+                    <span class="field-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+                    </span>
+                    <div class="underline-input">
+                        <label for="id_password" class="sr-only">Password</label>
+                        <input type="password" name="password" id="id_password" placeholder="Password" required>
+                    </div>
+                </div>
+                <div class="auth-actions">
+                    <button type="submit" class="btn-login">Login</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

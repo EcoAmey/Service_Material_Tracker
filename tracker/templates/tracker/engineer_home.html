@@ -1,0 +1,153 @@
+{% extends 'tracker/base.html' %}
+{% load static %}
+
+{% block content %}
+    <div class="toolbar">
+        <div class="search-field">
+            <input type="search" id="material-search" placeholder="Search by service ID, material, serial...">
+        </div>
+        <div class="filter-field">
+            <select id="part-type-filter">
+                <option value="">All part types</option>
+                <option value="power_card">Power Card</option>
+                <option value="control_card">Control Card</option>
+                <option value="material">Motor/Pump</option>
+            </select>
+        </div>
+        <div class="date-range">
+            <input type="date" id="date-from" aria-label="From date">
+            <span>to</span>
+            <input type="date" id="date-to" aria-label="To date">
+        </div>
+        <div class="sort-field">
+            <select id="sort-order">
+                <option value="desc">Newest first</option>
+                <option value="asc">Oldest first</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button type="button" class="tab-btn active" data-tab="pending">Pending</button>
+        <button type="button" class="tab-btn" data-tab="dispatched">Dispatched</button>
+    </div>
+
+    <form id="dispatch-form" method="post" action="{% url 'tracker:dispatch_submit' %}">
+        {% csrf_token %}
+        <div id="selected-items-fields"></div>
+
+        <div class="table-wrapper">
+            <div class="material-table">
+                <div class="table-header-row">
+                    <div></div>
+                    <div>Service ID</div>
+                    <div>Machine No</div>
+                    <div>Material</div>
+                    <div>Faulty S/N</div>
+                    <div>Status</div>
+                    <div>Date</div>
+                    <div></div>
+                </div>
+
+                {% for line in material_lines %}
+                    <div class="table-row"
+                         data-status="{% if line.is_dispatched %}dispatched{% else %}pending{% endif %}"
+                         data-part-type="{{ line.part_type }}"
+                         data-date="{{ line.replacement_date|date:'U' }}"
+                         data-search="{{ line.service_id|lower }} {{ line.material_name|lower }} {{ line.faulty_serial|lower }} {{ line.controller_serial|lower }} {{ line.farmer_name|lower }} {{ line.location|lower }}">
+                        <div class="row-main">
+                            <div class="col-check">
+                                {% if not line.is_dispatched %}
+                                    <input type="checkbox" class="material-select" value="{{ line.key }}">
+                                {% endif %}
+                            </div>
+                            <div class="col" data-label="Service ID">{{ line.service_id }}</div>
+                            <div class="col" data-label="Machine No">{{ line.controller_serial }}</div>
+                            <div class="col" data-label="Material">
+                                <span class="material-name">{{ line.material_name }}</span>
+                                <span class="part-type">{{ line.part_type_label }}</span>
+                            </div>
+                            <div class="col" data-label="Faulty S/N">{{ line.faulty_serial }}</div>
+                            <div class="col" data-label="Status">
+                                {% if line.is_dispatched %}
+                                    <span class="status-badge dispatched">Dispatched</span>
+                                {% else %}
+                                    <span class="status-badge pending">Pending</span>
+                                {% endif %}
+                            </div>
+                            <div class="col" data-label="Date">{{ line.replacement_date|date:"d M Y" }}</div>
+                            <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
+                        </div>
+                        <div class="row-details" hidden>
+                            <div class="field-pair"><dt>SI Details</dt><dd>{{ line.si_details }}</dd></div>
+                            <div class="field-pair"><dt>Farmer</dt><dd>{{ line.farmer_name }}</dd></div>
+                            <div class="field-pair"><dt>Location</dt><dd>{{ line.location }}</dd></div>
+                            <div class="field-pair"><dt>Service Person</dt><dd>{{ line.service_person_name }}</dd></div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <p class="empty-state">No replaced materials found for your account yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+        <p class="empty-state" id="no-items-message" hidden>Nothing here.</p>
+    </form>
+
+    <div class="dispatch-bar">
+        <span class="count" id="selected-count">0 selected</span>
+        <button type="button" id="open-dispatch-btn" disabled>Dispatch</button>
+    </div>
+
+    <dialog id="dispatch-dialog">
+        <div class="dialog-content">
+            <h2>Dispatch materials</h2>
+            <div class="field">
+                <label for="id_pickup_number">Pickup Number</label>
+                <input type="text" name="pickup_number" id="id_pickup_number" form="dispatch-form" required>
+            </div>
+            <div class="field">
+                <label for="id_lr_number">LR Number</label>
+                <input type="text" name="lr_number" id="id_lr_number" form="dispatch-form" required>
+            </div>
+            <div class="field">
+                <label for="id_delivery_challan_number">Delivery Challan Number</label>
+                <input type="text" name="delivery_challan_number" id="id_delivery_challan_number" form="dispatch-form" required>
+            </div>
+            <div class="field">
+                <label for="id_delivery_partner">Delivery Partner</label>
+                <select name="delivery_partner" id="id_delivery_partner" form="dispatch-form">
+                    <option value="" selected>Select delivery partner</option>
+                    {% for partner in delivery_partners %}
+                        <option value="{{ partner.pk }}">{{ partner.name }}</option>
+                    {% endfor %}
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="field" id="custom-delivery-partner-field" hidden>
+                <label for="id_custom_delivery_partner">Specify delivery partner</label>
+                <input type="text" name="custom_delivery_partner" id="id_custom_delivery_partner" form="dispatch-form">
+            </div>
+            <div class="field">
+                <label for="id_destination">Destination</label>
+                <select name="destination" id="id_destination" form="dispatch-form" required>
+                    <option value="" disabled selected>Select destination</option>
+                    {% for location in destinations %}
+                        <option value="{{ location.pk }}">{{ location.name }} ({{ location.get_location_type_display }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label for="id_remarks">Remarks</label>
+                <textarea name="remarks" id="id_remarks" form="dispatch-form" rows="2"></textarea>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="dispatch-cancel" class="btn-cancel">Cancel</button>
+                <button type="submit" form="dispatch-form" class="btn-submit">Confirm Dispatch</button>
+            </div>
+        </div>
+    </dialog>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{% static 'tracker/dispatch.js' %}?v=4"></script>
+{% endblock %}
