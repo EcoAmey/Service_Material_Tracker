@@ -29,6 +29,7 @@
 
     <div class="tabs">
         <button type="button" class="tab-btn active" data-tab="incoming">Incoming</button>
+        <button type="button" class="tab-btn" data-tab="pending_oem_scrap">Pending OEM/Scrap</button>
         <button type="button" class="tab-btn" data-tab="with_service_desk">With Service Desk</button>
         <button type="button" class="tab-btn" data-tab="with_electronics">With Electronics</button>
         <button type="button" class="tab-btn" data-tab="repaired_by_electronics">Repaired from Electronics</button>
@@ -70,6 +71,8 @@
                                     {% else %}
                                         <input type="checkbox" class="material-select" value="{{ item.pk }}" data-action-group="receive">
                                     {% endif %}
+                                {% elif item.is_pending_oem_scrap_decision %}
+                                    <input type="checkbox" class="material-select" value="{{ item.pk }}" data-action-group="card_disposal">
                                 {% elif item.is_pending_stock_entry %}
                                     <input type="checkbox" class="material-select" value="{{ item.pk }}" data-action-group="add_to_stock">
                                 {% endif %}
@@ -84,7 +87,7 @@
                             <div class="col" data-label="LR No.">{{ item.effective_dispatch.lr_number }}</div>
                             <div class="col" data-label="Challan No.">{{ item.effective_dispatch.delivery_challan_number }}</div>
                             <div class="col" data-label="Status">
-                                <span class="status-badge {% if item.is_pending_for_main_warehouse or item.is_pending_stock_entry %}pending{% else %}dispatched{% endif %}">{{ item.get_status_display }}</span>
+                                <span class="status-badge {% if item.is_pending_for_main_warehouse or item.is_pending_oem_scrap_decision or item.is_pending_stock_entry %}pending{% else %}dispatched{% endif %}">{% if item.electronics_final_remark %}{{ item.get_electronics_final_remark_display }}{% else %}{{ item.get_status_display }}{% endif %}</span>
                             </div>
                             <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
                         </div>
@@ -112,9 +115,24 @@
                                 {% endif %}
                                 <div class="field-pair"><dt>Reservation No.</dt><dd>{{ item.warehouse_reservation_no }}</dd></div>
                             {% endif %}
-                            {% if item.oem_inward_reservation_no or item.oem_outward_reservation_no %}
+                            {% if item.oem_inward_reservation_no %}
                                 <div class="field-pair"><dt>Inward Reservation No.</dt><dd>{{ item.oem_inward_reservation_no }}</dd></div>
+                            {% endif %}
+                            {% if item.oem_outward_reservation_no %}
                                 <div class="field-pair"><dt>Outward Reservation No.</dt><dd>{{ item.oem_outward_reservation_no }}</dd></div>
+                            {% endif %}
+                            {% if item.oem_dispatch_lr_no or item.oem_dispatch_challan_no %}
+                                <div class="field-pair"><dt>OEM Dispatch LR No.</dt><dd>{{ item.oem_dispatch_lr_no }}</dd></div>
+                                <div class="field-pair"><dt>OEM Dispatch Challan No.</dt><dd>{{ item.oem_dispatch_challan_no }}</dd></div>
+                            {% endif %}
+                            {% if item.scrap_condition %}
+                                <div class="field-pair"><dt>Scrap Condition</dt><dd>{{ item.get_scrap_condition_display }}</dd></div>
+                            {% endif %}
+                            {% if item.electronics_final_remark %}
+                                <div class="field-pair"><dt>Electronics Final Remark</dt><dd>{{ item.get_electronics_final_remark_display }}</dd></div>
+                            {% endif %}
+                            {% if item.stock_outward_reservation_no %}
+                                <div class="field-pair"><dt>Stock Outward Reservation No.</dt><dd>{{ item.stock_outward_reservation_no }}</dd></div>
                             {% endif %}
                             {% if not item.is_pending_for_main_warehouse %}
                                 <div class="field-pair"><dt>Action Remarks</dt><dd>{{ item.status_remarks|default:"-" }}</dd></div>
@@ -145,6 +163,10 @@
     <dialog id="remarks-dialog">
         <div class="dialog-content">
             <h2 id="remarks-dialog-title">Update status</h2>
+            <div class="field">
+                <label for="id_stock_outward_reservation_no">Outward reservation number</label>
+                <input type="text" name="stock_outward_reservation_no" id="id_stock_outward_reservation_no" form="action-form">
+            </div>
             <div class="field">
                 <label for="id_simple_remarks">Remarks (optional)</label>
                 <textarea name="simple_remarks" id="id_simple_remarks" form="action-form" rows="3"></textarea>
@@ -180,7 +202,7 @@
             </div>
             <div class="field">
                 <label for="id_receive_remarks">Remarks (required if it does not match)</label>
-                <textarea name="remarks" id="id_receive_remarks" form="action-form" rows="3"></textarea>
+                <textarea name="receive_remarks" id="id_receive_remarks" form="action-form" rows="3"></textarea>
             </div>
             <div class="dialog-actions">
                 <button type="button" id="receive-cancel" class="btn-cancel">Cancel</button>
@@ -202,7 +224,7 @@
             </div>
             <div class="field">
                 <label for="id_motor_remarks">Remarks (optional)</label>
-                <textarea name="remarks" id="id_motor_remarks" form="action-form" rows="3"></textarea>
+                <textarea name="motor_remarks" id="id_motor_remarks" form="action-form" rows="3"></textarea>
             </div>
             <div class="dialog-actions">
                 <button type="button" id="motor-cancel" class="btn-cancel">Cancel</button>
@@ -210,8 +232,57 @@
             </div>
         </div>
     </dialog>
+
+    <dialog id="card-oem-dialog">
+        <div class="dialog-content">
+            <h2>Dispatch to OEM</h2>
+            <div class="field">
+                <label for="id_card_oem_lr_no">LR number</label>
+                <input type="text" name="card_oem_lr_no" id="id_card_oem_lr_no" form="action-form">
+            </div>
+            <div class="field">
+                <label for="id_card_oem_challan_no">DC number</label>
+                <input type="text" name="card_oem_challan_no" id="id_card_oem_challan_no" form="action-form">
+            </div>
+            <div class="field">
+                <label for="id_card_oem_outward_reservation_no">Outward reservation number</label>
+                <input type="text" name="card_oem_outward_reservation_no" id="id_card_oem_outward_reservation_no" form="action-form">
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="card-oem-cancel" class="btn-cancel">Cancel</button>
+                <button type="submit" form="action-form" class="btn-submit">Confirm</button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog id="card-scrap-dialog">
+        <div class="dialog-content">
+            <h2>Scrap</h2>
+            <div class="field">
+                <label for="id_card_scrap_condition">Condition</label>
+                <select name="card_scrap_condition" id="id_card_scrap_condition" form="action-form">
+                    <option value="">— Select —</option>
+                    <option value="damaged">Damaged</option>
+                    <option value="burn">Burn</option>
+                    <option value="non_repairable">Non-repairable</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="id_card_scrap_remarks">Remark</label>
+                <textarea name="card_scrap_remarks" id="id_card_scrap_remarks" form="action-form" rows="3"></textarea>
+            </div>
+            <div class="field">
+                <label for="id_card_scrap_outward_reservation_no">Outward reservation number</label>
+                <input type="text" name="card_scrap_outward_reservation_no" id="id_card_scrap_outward_reservation_no" form="action-form">
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="card-scrap-cancel" class="btn-cancel">Cancel</button>
+                <button type="submit" form="action-form" class="btn-submit">Confirm</button>
+            </div>
+        </div>
+    </dialog>
 {% endblock %}
 
 {% block scripts %}
-    <script src="{% static 'tracker/main_warehouse.js' %}?v=4"></script>
+    <script src="{% static 'tracker/main_warehouse.js' %}?v=5"></script>
 {% endblock %}

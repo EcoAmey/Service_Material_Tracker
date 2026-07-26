@@ -188,10 +188,12 @@ class DispatchItem(models.Model):
         ('dispatched', 'Dispatched'),
         ('tested_ok', 'Tested OK'),
         ('repaired', 'Repaired'),
+        ('pending_oem_scrap', 'Pending OEM/Scrap Decision'),
         ('dispatched_to_oem', 'Dispatched to OEM'),
         ('dispatched_to_warehouse', 'Dispatched to Warehouse'),
         ('with_service_desk', 'With Service Desk'),
         ('with_electronics', 'With Electronics'),
+        ('electronics_completed', 'Completed (Electronics)'),
         ('repaired_by_electronics', 'Repaired (Electronics)'),
         ('scrapped', 'Scrapped'),
         ('added_to_stock', 'Added to Service Stock'),
@@ -234,6 +236,26 @@ class DispatchItem(models.Model):
     oem_inward_reservation_no = models.CharField(max_length=255, blank=True, null=True)
     oem_outward_reservation_no = models.CharField(max_length=255, blank=True, null=True)
 
+    # Set once, by the main warehouse's "Dispatch to OEM" action on a
+    # P-serial Power/Control Card (see is_p_serial_card) -- this path ships
+    # the card out directly, so it tracks its own LR/challan number instead
+    # of reusing the motor/pump inward reservation concept above.
+    # oem_outward_reservation_no is shared with the motor/pump path above.
+    oem_dispatch_lr_no = models.CharField(max_length=255, blank=True, null=True)
+    oem_dispatch_challan_no = models.CharField(max_length=255, blank=True, null=True)
+
+    # Set once, by the main warehouse's "Scrap" action on a P-serial
+    # Power/Control Card.
+    SCRAP_CONDITION_CHOICES = [
+        ('damaged', 'Damaged'),
+        ('burn', 'Burn'),
+        ('non_repairable', 'Non-repairable'),
+    ]
+    scrap_condition = models.CharField(max_length=20, blank=True, null=True, choices=SCRAP_CONDITION_CHOICES)
+
+    # Set once, by the main warehouse's "Add to Stock" action.
+    stock_outward_reservation_no = models.CharField(max_length=255, blank=True, null=True)
+
     # Service Desk's mandatory inspection checklist, set once when assigning
     # onward to Electronics.
     inspection_problem = models.CharField(max_length=255, blank=True, null=True)
@@ -249,11 +271,29 @@ class DispatchItem(models.Model):
     electronics_pcb_type = models.CharField(max_length=255, blank=True, null=True)
     electronics_pcb_issue = models.CharField(max_length=255, blank=True, null=True)
     electronics_failure_category = models.CharField(max_length=255, blank=True, null=True)
-    electronics_sub_category = models.CharField(max_length=255, blank=True, null=True)
+    # Widened from 255: now stores a comma-joined multi-select.
+    electronics_sub_category = models.CharField(max_length=1000, blank=True, null=True)
     electronics_igbt_pin_status = models.CharField(max_length=255, blank=True, null=True)
     electronics_component_change = models.CharField(max_length=255, blank=True, null=True)
     electronics_test_machine_info = models.CharField(max_length=255, blank=True, null=True)
     electronics_tested_date = models.DateField(null=True, blank=True)
+    electronics_engineer_name = models.CharField(max_length=255, blank=True, null=True)
+
+    # Set once, when Electronics disposes of a completed item onward (see
+    # is_electronics_completed / electronics_action_group below): the
+    # diagnostic remark from the checklist above, and the reservation number
+    # captured at that later disposition step.
+    electronics_final_remark = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        choices=[
+            ('repaired_ok', 'Repaired OK'),
+            ('tested_ok', 'Tested OK'),
+            ('scrapped', 'Scrapped'),
+        ],
+    )
+    electronics_outward_reservation_no = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         unique_together = [('service_id', 'part_type', 'faulty_serial')]
@@ -268,6 +308,15 @@ class DispatchItem(models.Model):
         return is_motor_or_pump(self.part_type, self.material_name)
 
     @property
+    def is_p_serial_card(self):
+        """A Power/Control Card whose faulty serial starts with 'P' -- these
+        skip Service Desk/Electronics entirely and go straight from Receive
+        to an OEM/Scrap decision instead."""
+        if self.part_type not in ('power_card', 'control_card'):
+            return False
+        return self.faulty_serial.strip().upper().startswith('P')
+
+    @property
     def effective_dispatch(self):
         """The dispatch that most recently brought this item to its current
         location: the forwarding dispatch if a regional warehouse forwarded
@@ -277,6 +326,14 @@ class DispatchItem(models.Model):
     @property
     def effective_arrival_date(self):
         return self.effective_dispatch.dispatched_at
+
+    @property
+    def assigned_to_service_desk_at(self):
+        """When this item first reached Service Desk (Main Warehouse's
+        Receive action) -- shown on both the Service Desk and Electronics
+        pages, since both display items sourced from that same handoff."""
+        event = self.status_events.filter(status='with_service_desk').first()
+        return event.changed_at if event else None
 
     @property
     def is_pending_for_main_warehouse(self):
@@ -290,12 +347,29 @@ class DispatchItem(models.Model):
         return False
 
     @property
+    def is_pending_oem_scrap_decision(self):
+        """True once a P-serial Power/Control Card has been received and is
+        awaiting the warehouse's Dispatch to OEM / Scrap decision."""
+        return self.status == 'pending_oem_scrap'
+
+    @property
     def is_pending_for_service_desk(self):
         return self.status == 'with_service_desk'
 
     @property
     def is_pending_for_electronics(self):
         return self.status == 'with_electronics'
+
+    @property
+    def is_electronics_completed(self):
+        return self.status == 'electronics_completed'
+
+    @property
+    def electronics_action_group(self):
+        """'scrap' or 'send_to_warehouse', based on the diagnostic remark --
+        used both to render each row's data-action-group and to re-check
+        server-side that the right button was used."""
+        return 'scrap' if self.electronics_final_remark == 'scrapped' else 'send_to_warehouse'
 
     @property
     def is_pending_stock_entry(self):

@@ -26,17 +26,37 @@ document.addEventListener('DOMContentLoaded', function () {
   const motorDialog = document.getElementById('motor-dialog');
   const motorDialogTitle = document.getElementById('motor-dialog-title');
   const motorCancel = document.getElementById('motor-cancel');
+  const cardOemDialog = document.getElementById('card-oem-dialog');
+  const cardOemCancel = document.getElementById('card-oem-cancel');
+  const cardScrapDialog = document.getElementById('card-scrap-dialog');
+  const cardScrapCancel = document.getElementById('card-scrap-cancel');
   const receivedSerialNoField = document.getElementById('received-serial-no-field');
   const receivedSerialNoInput = document.getElementById('id_received_serial_no');
   const serialMatchesYes = document.getElementById('id_serial_matches_yes');
   const serialMatchesNo = document.getElementById('id_serial_matches_no');
+  const receiveRemarksInput = document.getElementById('id_receive_remarks');
 
   // The receive dialog's fields share the same <form> as the simple remarks
   // dialog, so a required field in the closed dialog would silently block
   // submission of the other one. Toggle `required` based on which dialog
   // is actually open.
-  const receiveRequiredFields = [document.getElementById('id_received_date'), document.getElementById('id_reservation_no')];
+  const receiveRequiredFields = [
+    document.getElementById('id_received_date'),
+    document.getElementById('id_reservation_no'),
+    document.getElementById('id_serial_matches_yes'),
+    document.getElementById('id_serial_matches_no'),
+  ];
   const motorRequiredFields = [document.getElementById('id_inward_reservation_no'), document.getElementById('id_outward_reservation_no')];
+  const stockRequiredFields = [document.getElementById('id_stock_outward_reservation_no')];
+  const cardOemRequiredFields = [
+    document.getElementById('id_card_oem_lr_no'),
+    document.getElementById('id_card_oem_challan_no'),
+    document.getElementById('id_card_oem_outward_reservation_no'),
+  ];
+  const cardScrapRequiredFields = [
+    document.getElementById('id_card_scrap_condition'),
+    document.getElementById('id_card_scrap_outward_reservation_no'),
+  ];
 
   function setReceiveFieldsRequired(isRequired) {
     receiveRequiredFields.forEach((field) => {
@@ -50,19 +70,53 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  function setStockFieldsRequired(isRequired) {
+    stockRequiredFields.forEach((field) => {
+      if (field) field.required = isRequired;
+    });
+  }
+
+  function setCardOemFieldsRequired(isRequired) {
+    cardOemRequiredFields.forEach((field) => {
+      if (field) field.required = isRequired;
+    });
+  }
+
+  function setCardScrapFieldsRequired(isRequired) {
+    cardScrapRequiredFields.forEach((field) => {
+      if (field) field.required = isRequired;
+    });
+  }
+
+  // Turns off every dialog's required fields except the one named -- called
+  // whenever a dialog opens, so a stray required field left over from a
+  // previously-opened (now closed) dialog can never block this submission.
+  function setOnlyRequired(name) {
+    setReceiveFieldsRequired(name === 'receive');
+    setMotorFieldsRequired(name === 'motor');
+    setStockFieldsRequired(name === 'stock');
+    setCardOemFieldsRequired(name === 'cardOem');
+    setCardScrapFieldsRequired(name === 'cardScrap');
+  }
+
   function updateSerialNoVisibility() {
     const mismatched = !!(serialMatchesNo && serialMatchesNo.checked);
     if (receivedSerialNoField) receivedSerialNoField.hidden = !mismatched;
     if (receivedSerialNoInput) receivedSerialNoInput.required = mismatched;
+    if (receiveRemarksInput) receiveRemarksInput.required = mismatched;
   }
 
   if (serialMatchesYes) serialMatchesYes.addEventListener('change', updateSerialNoVisibility);
   if (serialMatchesNo) serialMatchesNo.addEventListener('change', updateSerialNoVisibility);
 
-  setReceiveFieldsRequired(false);
-  setMotorFieldsRequired(false);
+  setOnlyRequired(null);
 
   let activeTab = 'incoming';
+  // Which action-group is currently selected -- 'dispatch_to_oem' (motor/
+  // pump) and 'card_disposal' (P-serial cards) both show the same OEM/Scrap
+  // buttons, so their click handlers read this to decide which dialog
+  // (motor vs card) to open.
+  let currentGroup = null;
 
   function getSelected() {
     return checkboxes.filter((cb) => cb.checked);
@@ -82,6 +136,7 @@ document.addEventListener('DOMContentLoaded', function () {
       btn.disabled = true;
     });
     mismatchWarning.hidden = true;
+    currentGroup = null;
 
     if (selected.length === 0) {
       return;
@@ -94,7 +149,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const group = selected[0].dataset.actionGroup;
-    const btns = { receive: [receiveBtn], dispatch_to_oem: [oemBtn, scrapBtn], add_to_stock: [stockBtn] }[group] || [];
+    currentGroup = group;
+    const btns = {
+      receive: [receiveBtn],
+      dispatch_to_oem: [oemBtn, scrapBtn],
+      card_disposal: [oemBtn, scrapBtn],
+      add_to_stock: [stockBtn],
+    }[group] || [];
     btns.forEach((btn) => {
       btn.hidden = false;
       btn.disabled = false;
@@ -155,16 +216,17 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function openRemarksDialog(action, title) {
-    setReceiveFieldsRequired(false);
+    setOnlyRequired('stock');
     actionField.value = action;
     remarksDialogTitle.textContent = title;
+    document.getElementById('id_stock_outward_reservation_no').value = '';
     document.getElementById('id_simple_remarks').value = '';
     populateSelectedFields();
     remarksDialog.showModal();
   }
 
   function openMotorDialog(action, title) {
-    setMotorFieldsRequired(true);
+    setOnlyRequired('motor');
     actionField.value = action;
     motorDialogTitle.textContent = title;
     document.getElementById('id_inward_reservation_no').value = '';
@@ -174,14 +236,42 @@ document.addEventListener('DOMContentLoaded', function () {
     motorDialog.showModal();
   }
 
+  function openCardOemDialog() {
+    setOnlyRequired('cardOem');
+    actionField.value = 'card_dispatch_to_oem';
+    document.getElementById('id_card_oem_lr_no').value = '';
+    document.getElementById('id_card_oem_challan_no').value = '';
+    document.getElementById('id_card_oem_outward_reservation_no').value = '';
+    populateSelectedFields();
+    cardOemDialog.showModal();
+  }
+
+  function openCardScrapDialog() {
+    setOnlyRequired('cardScrap');
+    actionField.value = 'card_scrap';
+    document.getElementById('id_card_scrap_condition').value = '';
+    document.getElementById('id_card_scrap_remarks').value = '';
+    document.getElementById('id_card_scrap_outward_reservation_no').value = '';
+    populateSelectedFields();
+    cardScrapDialog.showModal();
+  }
+
   if (oemBtn) {
     oemBtn.addEventListener('click', function () {
-      openMotorDialog('dispatch_to_oem', 'Dispatch to OEM');
+      if (currentGroup === 'card_disposal') {
+        openCardOemDialog();
+      } else {
+        openMotorDialog('dispatch_to_oem', 'Dispatch to OEM');
+      }
     });
   }
   if (scrapBtn) {
     scrapBtn.addEventListener('click', function () {
-      openMotorDialog('scrap', 'Scrap');
+      if (currentGroup === 'card_disposal') {
+        openCardScrapDialog();
+      } else {
+        openMotorDialog('scrap', 'Scrap');
+      }
     });
   }
   if (stockBtn) {
@@ -191,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   if (receiveBtn) {
     receiveBtn.addEventListener('click', function () {
-      setReceiveFieldsRequired(true);
+      setOnlyRequired('receive');
       actionField.value = 'receive';
       document.getElementById('id_received_date').value = '';
       document.getElementById('id_serial_matches_yes').checked = false;
@@ -207,19 +297,32 @@ document.addEventListener('DOMContentLoaded', function () {
 
   if (remarksCancel) {
     remarksCancel.addEventListener('click', function () {
+      setOnlyRequired(null);
       remarksDialog.close();
     });
   }
   if (receiveCancel) {
     receiveCancel.addEventListener('click', function () {
-      setReceiveFieldsRequired(false);
+      setOnlyRequired(null);
       receiveDialog.close();
     });
   }
   if (motorCancel) {
     motorCancel.addEventListener('click', function () {
-      setMotorFieldsRequired(false);
+      setOnlyRequired(null);
       motorDialog.close();
+    });
+  }
+  if (cardOemCancel) {
+    cardOemCancel.addEventListener('click', function () {
+      setOnlyRequired(null);
+      cardOemDialog.close();
+    });
+  }
+  if (cardScrapCancel) {
+    cardScrapCancel.addEventListener('click', function () {
+      setOnlyRequired(null);
+      cardScrapDialog.close();
     });
   }
 

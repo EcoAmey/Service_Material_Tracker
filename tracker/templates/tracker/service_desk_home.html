@@ -37,15 +37,14 @@
         <div id="selected-items-fields"></div>
 
         <div class="table-wrapper">
-            <div class="material-table compact cols-mainwarehouse">
+            <div class="material-table compact cols-servicedesk">
                 <div class="table-header-row">
                     <div></div>
                     <div>Service ID</div>
                     <div>Machine No</div>
                     <div>Material</div>
                     <div>Faulty S/N</div>
-                    <div>LR No.</div>
-                    <div>Challan No.</div>
+                    <div>Assigned to SD</div>
                     <div>Status</div>
                     <div></div>
                 </div>
@@ -69,14 +68,15 @@
                                 <span class="part-type">{{ item.get_part_type_display }}</span>
                             </div>
                             <div class="col" data-label="Faulty S/N">{{ item.faulty_serial }}</div>
-                            <div class="col" data-label="LR No.">{{ item.effective_dispatch.lr_number }}</div>
-                            <div class="col" data-label="Challan No.">{{ item.effective_dispatch.delivery_challan_number }}</div>
+                            <div class="col" data-label="Assigned to SD">{{ item.assigned_to_service_desk_at|date:"d M Y" }}</div>
                             <div class="col" data-label="Status">
                                 <span class="status-badge {% if item.is_pending_for_service_desk %}pending{% else %}dispatched{% endif %}">{{ item.get_status_display }}</span>
                             </div>
                             <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
                         </div>
                         <div class="row-details" hidden>
+                            <div class="field-pair"><dt>LR No.</dt><dd>{{ item.effective_dispatch.lr_number }}</dd></div>
+                            <div class="field-pair"><dt>Challan No.</dt><dd>{{ item.effective_dispatch.delivery_challan_number }}</dd></div>
                             <div class="field-pair"><dt>SI Details</dt><dd>{{ item.si_details }}</dd></div>
                             <div class="field-pair"><dt>Farmer</dt><dd>{{ item.farmer_name }}</dd></div>
                             <div class="field-pair"><dt>Location</dt><dd>{{ item.location }}</dd></div>
@@ -92,7 +92,7 @@
                                 <div class="field-pair"><dt>MTR Test</dt><dd>{% if item.inspection_mtr_test_passed %}Passed{% else %}Failed{% endif %}</dd></div>
                                 <div class="field-pair"><dt>Cold Test</dt><dd>{% if item.inspection_cold_test_passed %}Passed{% else %}Failed{% endif %}</dd></div>
                                 <div class="field-pair"><dt>Wiring</dt><dd>{% if item.inspection_wiring_repaired %}Repaired{% else %}Was OK{% endif %}</dd></div>
-                                <div class="field-pair"><dt>Reservation No.</dt><dd>{{ item.inspection_reservation_no }}</dd></div>
+                                <div class="field-pair"><dt>Reservation No.</dt><dd>{{ item.warehouse_reservation_no }}</dd></div>
                                 <div class="field-pair"><dt>Action Remarks</dt><dd>{{ item.status_remarks|default:"-" }}</dd></div>
                                 <div class="field-pair"><dt>Updated By</dt><dd>{{ item.status_updated_by.name }}</dd></div>
                                 <div class="field-pair"><dt>Updated On</dt><dd>{{ item.status_updated_at|date:"d M Y, H:i" }}</dd></div>
@@ -148,10 +148,6 @@
                     <label><input type="radio" name="wiring" value="repaired" form="action-form" required> Repaired</label>
                     <label><input type="radio" name="wiring" value="ok" form="action-form"> Was OK</label>
                 </div>
-            </div>
-            <div class="field">
-                <label for="id_reservation_no">Reservation No.</label>
-                <input type="text" name="reservation_no" id="id_reservation_no" form="action-form" required>
             </div>
             <div class="field">
                 <label for="id_remarks">Remark</label>

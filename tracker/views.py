@@ -8,8 +8,12 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from .forms import (
+    AddToStockForm,
+    CardOemDispatchForm,
+    CardScrapForm,
     DispatchForm,
     ElectronicsAssignmentForm,
+    ElectronicsDispositionForm,
     ElectronicsProceedForm,
     ForwardDispatchForm,
     MotorDispositionForm,
@@ -219,14 +223,17 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
       material -- records the receive date and whether the physical serial
       matches the ticket on file, then hands off to Service Desk.
     - Dispatch to OEM: motors/pumps go straight to the OEM for repair
-      instead of through Service Desk / Electronics.
+      instead of through Service Desk / Electronics. A P-serial Power/
+      Control Card (see DispatchItem.is_p_serial_card) takes the same
+      shortcut, but only after being received -- see card_dispatch_to_oem/
+      card_scrap below.
     - Add to Stock: closes the loop once Electronics has repaired an item
       and sent it back -- marks it added to the service stock.
     """
 
     login_url = 'tracker:login'
 
-    ACTIONS = {'receive', 'dispatch_to_oem', 'scrap', 'add_to_stock'}
+    ACTIONS = {'receive', 'dispatch_to_oem', 'scrap', 'card_dispatch_to_oem', 'card_scrap', 'add_to_stock'}
 
     def _eligible_items(self, action, selected_pks):
         candidates = _get_main_warehouse_items().filter(pk__in=selected_pks)
@@ -240,6 +247,8 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
                 item for item in candidates
                 if item.is_pending_for_main_warehouse and item.is_motor_or_pump
             ]
+        if action in ('card_dispatch_to_oem', 'card_scrap'):
+            return [item for item in candidates if item.is_pending_oem_scrap_decision]
         if action == 'add_to_stock':
             return [item for item in candidates if item.is_pending_stock_entry]
         return []
@@ -264,13 +273,14 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
         item_pks = [item.pk for item in items]
 
         if action == 'receive':
-            form = ReceiveMaterialForm(request.POST)
+            receive_data = request.POST.copy()
+            receive_data['remarks'] = request.POST.get('receive_remarks', '')
+            form = ReceiveMaterialForm(receive_data)
             if not form.is_valid():
                 messages.error(request, 'Please correct the errors in the receive form.')
                 return redirect('tracker:main_warehouse_home')
             remarks = form.cleaned_data['remarks']
-            DispatchItem.objects.filter(pk__in=item_pks).update(
-                status='with_service_desk',
+            common_fields = dict(
                 received_date=form.cleaned_data['received_date'],
                 received_serial_matches=form.cleaned_data['serial_matches'] == 'yes',
                 received_serial_no=form.cleaned_data['received_serial_no'],
@@ -279,13 +289,41 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
                 status_updated_by=request.user,
                 status_updated_at=timezone.now(),
             )
-            for item in items:
-                record_status_event(item, 'with_service_desk', remarks, request.user)
-            messages.success(request, f'Received {len(items)} item(s) and assigned to Service Desk.')
+
+            # P-serial Power/Control Cards skip Service Desk/Electronics
+            # entirely -- straight to an OEM/Scrap decision instead.
+            card_items = [item for item in items if item.is_p_serial_card]
+            other_items = [item for item in items if not item.is_p_serial_card]
+
+            if card_items:
+                DispatchItem.objects.filter(pk__in=[item.pk for item in card_items]).update(
+                    status='pending_oem_scrap', **common_fields
+                )
+                for item in card_items:
+                    record_status_event(item, 'pending_oem_scrap', remarks, request.user)
+            if other_items:
+                DispatchItem.objects.filter(pk__in=[item.pk for item in other_items]).update(
+                    status='with_service_desk', **common_fields
+                )
+                for item in other_items:
+                    record_status_event(item, 'with_service_desk', remarks, request.user)
+
+            if card_items and other_items:
+                messages.success(
+                    request,
+                    f'Received {len(items)} item(s): {len(other_items)} assigned to Service Desk, '
+                    f'{len(card_items)} flagged for an OEM/Scrap decision.',
+                )
+            elif card_items:
+                messages.success(request, f'Received {len(items)} item(s), flagged for an OEM/Scrap decision.')
+            else:
+                messages.success(request, f'Received {len(items)} item(s) and assigned to Service Desk.')
             return redirect('tracker:main_warehouse_home')
 
         if action in ('dispatch_to_oem', 'scrap'):
-            form = MotorDispositionForm(request.POST)
+            motor_data = request.POST.copy()
+            motor_data['remarks'] = request.POST.get('motor_remarks', '')
+            form = MotorDispositionForm(motor_data)
             if not form.is_valid():
                 messages.error(request, 'Please correct the errors in the form.')
                 return redirect('tracker:main_warehouse_home')
@@ -305,8 +343,60 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
             messages.success(request, f'Updated {len(items)} item(s).')
             return redirect('tracker:main_warehouse_home')
 
-        # add_to_stock is a simple status + remarks update.
-        form = WarehouseRemarksForm({'remarks': request.POST.get('simple_remarks', '')})
+        if action == 'card_dispatch_to_oem':
+            form = CardOemDispatchForm({
+                'lr_no': request.POST.get('card_oem_lr_no', ''),
+                'challan_no': request.POST.get('card_oem_challan_no', ''),
+                'outward_reservation_no': request.POST.get('card_oem_outward_reservation_no', ''),
+            })
+            if not form.is_valid():
+                messages.error(request, 'Please correct the errors in the form.')
+                return redirect('tracker:main_warehouse_home')
+
+            DispatchItem.objects.filter(pk__in=item_pks).update(
+                status='dispatched_to_oem',
+                oem_dispatch_lr_no=form.cleaned_data['lr_no'],
+                oem_dispatch_challan_no=form.cleaned_data['challan_no'],
+                oem_outward_reservation_no=form.cleaned_data['outward_reservation_no'],
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+            )
+            for item in items:
+                record_status_event(item, 'dispatched_to_oem', '', request.user)
+            messages.success(request, f'Dispatched {len(items)} item(s) to OEM.')
+            return redirect('tracker:main_warehouse_home')
+
+        if action == 'card_scrap':
+            form = CardScrapForm({
+                'condition': request.POST.get('card_scrap_condition', ''),
+                'remarks': request.POST.get('card_scrap_remarks', ''),
+                'outward_reservation_no': request.POST.get('card_scrap_outward_reservation_no', ''),
+            })
+            if not form.is_valid():
+                messages.error(request, 'Please correct the errors in the form.')
+                return redirect('tracker:main_warehouse_home')
+
+            remarks = form.cleaned_data['remarks']
+            DispatchItem.objects.filter(pk__in=item_pks).update(
+                status='scrapped',
+                scrap_condition=form.cleaned_data['condition'],
+                oem_outward_reservation_no=form.cleaned_data['outward_reservation_no'],
+                status_remarks=remarks,
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+            )
+            for item in items:
+                record_status_event(item, 'scrapped', remarks, request.user)
+            messages.success(request, f'Scrapped {len(items)} item(s).')
+            return redirect('tracker:main_warehouse_home')
+
+        # add_to_stock also captures the outward reservation number it's
+        # issued against, so uses its own form rather than WarehouseRemarksForm
+        # (shared with the regional warehouse's plain status-only actions).
+        form = AddToStockForm({
+            'outward_reservation_no': request.POST.get('stock_outward_reservation_no', ''),
+            'remarks': request.POST.get('simple_remarks', ''),
+        })
         if not form.is_valid():
             messages.error(request, 'Please correct the errors in the form.')
             return redirect('tracker:main_warehouse_home')
@@ -314,6 +404,7 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
         remarks = form.cleaned_data['remarks']
         DispatchItem.objects.filter(pk__in=item_pks).update(
             status='added_to_stock',
+            stock_outward_reservation_no=form.cleaned_data['outward_reservation_no'],
             status_remarks=remarks,
             status_updated_by=request.user,
             status_updated_at=timezone.now(),
@@ -371,7 +462,6 @@ class ServiceDeskActionView(LoginRequiredMixin, View):
             inspection_mtr_test_passed=data['mtr_test'] == 'passed',
             inspection_cold_test_passed=data['cold_test'] == 'passed',
             inspection_wiring_repaired=data['wiring'] == 'repaired',
-            inspection_reservation_no=data['reservation_no'],
         )
         for item in items:
             record_status_event(item, 'with_electronics', data['remarks'], request.user)
@@ -394,50 +484,92 @@ class ElectronicsHomeView(LoginRequiredMixin, TemplateView):
 
 
 class ElectronicsActionView(LoginRequiredMixin, View):
-    """Handles Electronics proceeding on one or more items: fills in the
-    diagnostic checklist and decides Tested OK (sent back to the warehouse
-    for stock) or Scrapped (terminal)."""
+    """Handles Electronics acting on one or more items:
+
+    - Proceed: fills in the diagnostic checklist and records a diagnosis
+      (Repaired OK / Tested OK / Scrapped), moving the item to Completed.
+    - Send Back to Warehouse / Scrap: a later, separate action on an
+      already-diagnosed (Completed) item -- captures the outward
+      reservation number and performs the actual disposition. Which of the
+      two applies is determined by the diagnosis (see
+      DispatchItem.electronics_action_group), and re-checked here against
+      a tampered request the same way the warehouse views do.
+    """
 
     login_url = 'tracker:login'
 
+    ACTIONS = {'proceed', 'send_to_warehouse', 'scrap'}
+
     def post(self, request, *args, **kwargs):
+        action = request.POST.get('action')
         selected_pks = request.POST.getlist('selected_items')
 
-        items = [
-            item for item in get_electronics_items().filter(pk__in=selected_pks)
-            if item.is_pending_for_electronics
-        ]
+        if action not in self.ACTIONS:
+            messages.error(request, 'Unknown action.')
+            return redirect('tracker:electronics_home')
+
+        candidates = get_electronics_items().filter(pk__in=selected_pks)
+        if action == 'proceed':
+            items = [item for item in candidates if item.is_pending_for_electronics]
+        else:
+            items = [item for item in candidates if item.is_electronics_completed]
         if not items:
-            messages.error(request, 'Select at least one item awaiting a decision.')
+            messages.error(request, 'Select at least one eligible material for this action.')
             return redirect('tracker:electronics_home')
 
-        form = ElectronicsProceedForm(request.POST)
-        if not form.is_valid():
-            messages.error(request, 'Please complete the checklist.')
-            return redirect('tracker:electronics_home')
-
-        data = form.cleaned_data
-        new_status = 'repaired_by_electronics' if data['outcome'] == 'tested_ok' else 'scrapped'
         item_pks = [item.pk for item in items]
+
+        if action == 'proceed':
+            form = ElectronicsProceedForm(request.POST)
+            if not form.is_valid():
+                messages.error(request, 'Please complete the checklist.')
+                return redirect('tracker:electronics_home')
+
+            data = form.cleaned_data
+            DispatchItem.objects.filter(pk__in=item_pks).update(
+                status='electronics_completed',
+                status_remarks=data['remarks'],
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+                electronics_engineer_name=data['electronics_engineer_name'],
+                electronics_initial_observation=data['initial_observation'],
+                electronics_pcb_type=data['pcb_type'],
+                electronics_pcb_issue=data['pcb_issue'],
+                electronics_failure_category=data['failure_category'],
+                electronics_sub_category=', '.join(data['sub_category']),
+                electronics_igbt_pin_status=data['igbt_pin_status'],
+                electronics_component_change=data['component_change'],
+                electronics_test_machine_info=data['test_machine_info'],
+                electronics_tested_date=data['tested_date'],
+                electronics_final_remark=data['final_remark'],
+            )
+            for item in items:
+                record_status_event(item, 'electronics_completed', data['remarks'], request.user)
+            messages.success(request, f'Completed diagnosis for {len(items)} item(s).')
+            return redirect('tracker:electronics_home')
+
+        # send_to_warehouse / scrap -- only valid for items whose diagnosis
+        # matches the button clicked.
+        expected_group = 'scrap' if action == 'scrap' else 'send_to_warehouse'
+        if any(item.electronics_action_group != expected_group for item in items):
+            messages.error(request, 'One or more selected items are not eligible for that action.')
+            return redirect('tracker:electronics_home')
+
+        form = ElectronicsDispositionForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, 'Please enter the outward reservation number.')
+            return redirect('tracker:electronics_home')
+
+        new_status = 'scrapped' if action == 'scrap' else 'repaired_by_electronics'
         DispatchItem.objects.filter(pk__in=item_pks).update(
             status=new_status,
-            status_remarks=data['remarks'],
+            electronics_outward_reservation_no=form.cleaned_data['outward_reservation_no'],
             status_updated_by=request.user,
             status_updated_at=timezone.now(),
-            electronics_initial_observation=data['initial_observation'],
-            electronics_pcb_type=data['pcb_type'],
-            electronics_pcb_issue=data['pcb_issue'],
-            electronics_failure_category=data['failure_category'],
-            electronics_sub_category=data['sub_category'],
-            electronics_igbt_pin_status=data['igbt_pin_status'],
-            electronics_component_change=data['component_change'],
-            electronics_test_machine_info=data['test_machine_info'],
-            electronics_tested_date=data['tested_date'],
         )
         for item in items:
-            record_status_event(item, new_status, data['remarks'], request.user)
-        verb = 'Tested OK' if new_status == 'repaired_by_electronics' else 'Scrapped'
-        messages.success(request, f'{verb}: {len(items)} item(s).')
+            record_status_event(item, new_status, '', request.user)
+        messages.success(request, f'Updated {len(items)} item(s).')
         return redirect('tracker:electronics_home')
 
 

@@ -197,6 +197,115 @@ body:has(.auth-page) {
   width: auto;
 }
 
+.combo {
+  position: relative;
+}
+
+.combo-trigger {
+  width: 100%;
+  padding: 12px 34px 12px 12px;
+  font-size: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  position: relative;
+}
+
+.combo-trigger::after {
+  content: '';
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--color-text-muted);
+  border-bottom: 2px solid var(--color-text-muted);
+  transform: translateY(-70%) rotate(45deg);
+}
+
+.combo-panel {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 280px;
+}
+
+.combo-panel:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+
+.combo-search {
+  flex-shrink: 0;
+  margin: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.combo-search:focus {
+  outline: 2px solid var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+.combo-options {
+  margin: 0;
+  padding: 4px 6px 8px;
+  list-style: none;
+  overflow-y: auto;
+  border-top: 1px solid var(--color-border);
+}
+
+.combo-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 8px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.combo-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combo-option:hover {
+  background: var(--color-bg);
+}
+
+.combo-option.selected {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 600;
+}
+
+.combo-option input[type="checkbox"] {
+  flex-shrink: 0;
+  width: auto;
+  accent-color: var(--color-primary);
+}
+
+.combo-option input[type="checkbox"] {
+  width: auto;
+}
+
 .form-error {
   color: var(--color-danger);
   font-size: 0.875rem;
@@ -394,6 +503,14 @@ body:has(.auth-page) {
 .cols-mainwarehouse .table-header-row,
 .cols-mainwarehouse .row-main {
   grid-template-columns: 22px 0.85fr 0.75fr 1.05fr 0.75fr 0.7fr 0.8fr 0.75fr 20px;
+}
+
+/* Service Desk and Electronics: LR No./Challan No. move into the
+   collapsible details instead, replaced by a single "assigned to Service
+   Desk" date column. */
+.cols-servicedesk .table-header-row,
+.cols-servicedesk .row-main {
+  grid-template-columns: 22px 0.85fr 0.75fr 1.05fr 0.75fr 0.9fr 0.75fr 20px;
 }
 
 .material-table.compact {

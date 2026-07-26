@@ -49,6 +49,15 @@ class WarehouseRemarksForm(forms.Form):
     remarks = forms.CharField(widget=forms.Textarea, required=False)
 
 
+class AddToStockForm(forms.Form):
+    """Main warehouse's 'Add to Stock' action -- closes the loop on a
+    repaired item, capturing the outward reservation number it's issued
+    against."""
+
+    outward_reservation_no = forms.CharField(max_length=255, label='Outward reservation number')
+    remarks = forms.CharField(widget=forms.Textarea, required=False)
+
+
 class ReceiveMaterialForm(forms.Form):
     """The main warehouse receiving a Power Card / Control Card / RMU item:
     records when it physically arrived and whether its serial number
@@ -81,6 +90,32 @@ class MotorDispositionForm(forms.Form):
     remarks = forms.CharField(widget=forms.Textarea, required=False)
 
 
+class CardOemDispatchForm(forms.Form):
+    """Warehouse dispatching a P-serial Power/Control Card (see
+    DispatchItem.is_p_serial_card) straight to OEM after receiving it --
+    ships out directly, so it's tracked by its own LR/challan number rather
+    than the motor/pump inward-reservation concept."""
+
+    lr_no = forms.CharField(max_length=255, label='LR number')
+    challan_no = forms.CharField(max_length=255, label='DC number')
+    outward_reservation_no = forms.CharField(max_length=255, label='Outward reservation number')
+
+
+class CardScrapForm(forms.Form):
+    """Warehouse scrapping a P-serial Power/Control Card after receiving
+    it."""
+
+    CONDITION_CHOICES = [
+        ('damaged', 'Damaged'),
+        ('burn', 'Burn'),
+        ('non_repairable', 'Non-repairable'),
+    ]
+
+    condition = forms.ChoiceField(choices=CONDITION_CHOICES)
+    remarks = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}), required=False)
+    outward_reservation_no = forms.CharField(max_length=255, label='Outward reservation number')
+
+
 class ElectronicsAssignmentForm(forms.Form):
     """Service Desk's mandatory inspection checklist before assigning an
     item onward to Electronics -- every field here is required."""
@@ -94,7 +129,6 @@ class ElectronicsAssignmentForm(forms.Form):
     mtr_test = forms.ChoiceField(choices=PASS_FAIL)
     cold_test = forms.ChoiceField(choices=PASS_FAIL)
     wiring = forms.ChoiceField(choices=WIRING_CHOICES)
-    reservation_no = forms.CharField(max_length=255)
     remarks = forms.CharField(widget=forms.Textarea)
 
 
@@ -117,7 +151,6 @@ MTR phase loss
 Track damaged
 PCB BROKEN
 TRACK DAMAGED
-NA
 Communication Problem
 Short circuit on display
 Current missmatched
@@ -201,11 +234,8 @@ PCB issue reported
 FAILURE_CATEGORY_CHOICES = _choices("""
 Hardware
 Software
-Prod process
-QC oversight
-Hardware(Control) & Software (Power)
-Hardware(power) & Software (control)
-Hardware & Software
+Prod Process
+None
 """)
 
 SUB_CATEGORY_CHOICES = _choices("""
@@ -272,27 +302,36 @@ VALUE OK  BUT INTERNAL FUNCTIONING OFF
 UVW SHORT WITH +VE
 UVW SHORT WITH -VE
 IGBT BROKEN
+OK Condition
 """)
 
 
 class ElectronicsProceedForm(forms.Form):
     """Electronics' detailed diagnostic checklist -- captured once when
-    proceeding to a Tested OK / Scrapped decision."""
+    proceeding to a diagnosed (Completed) state. This only records the
+    diagnosis; the actual Send Back to Warehouse / Scrap disposition is a
+    separate, later action (see ElectronicsDispositionForm)."""
 
+    NA_CHOICE = [('NA', 'NA')]
     BLANK = [('', '— Select —')]
-    OUTCOME_CHOICES = [('tested_ok', 'Tested OK'), ('scrapped', 'Scrapped')]
+    FINAL_REMARK_CHOICES = [
+        ('repaired_ok', 'Repaired OK'),
+        ('tested_ok', 'Tested OK'),
+        ('scrapped', 'Scrapped'),
+    ]
 
-    initial_observation = forms.ChoiceField(choices=BLANK + INITIAL_OBSERVATION_CHOICES)
-    pcb_type = forms.ChoiceField(choices=BLANK + PCB_TYPE_CHOICES)
-    pcb_issue = forms.ChoiceField(choices=BLANK + PCB_ISSUE_CHOICES)
+    electronics_engineer_name = forms.CharField(max_length=255, label='Electronics Engineer name')
+    initial_observation = forms.ChoiceField(choices=BLANK + NA_CHOICE + INITIAL_OBSERVATION_CHOICES)
+    pcb_type = forms.ChoiceField(choices=BLANK + NA_CHOICE + PCB_TYPE_CHOICES)
+    pcb_issue = forms.ChoiceField(choices=BLANK + NA_CHOICE + PCB_ISSUE_CHOICES)
     failure_category = forms.ChoiceField(choices=BLANK + FAILURE_CATEGORY_CHOICES)
-    sub_category = forms.ChoiceField(choices=BLANK + SUB_CATEGORY_CHOICES)
-    igbt_pin_status = forms.ChoiceField(choices=BLANK + IGBT_PIN_STATUS_CHOICES)
+    sub_category = forms.MultipleChoiceField(choices=SUB_CATEGORY_CHOICES, widget=forms.SelectMultiple)
+    igbt_pin_status = forms.ChoiceField(choices=BLANK + NA_CHOICE + IGBT_PIN_STATUS_CHOICES)
     component_change = forms.CharField(max_length=255)
     test_machine_info = forms.CharField(max_length=255)
     tested_date = forms.DateField(widget=forms.DateInput(attrs={'type': 'date'}))
-    outcome = forms.ChoiceField(choices=BLANK + OUTCOME_CHOICES)
-    remarks = forms.CharField(widget=forms.Textarea)
+    final_remark = forms.ChoiceField(choices=BLANK + FINAL_REMARK_CHOICES)
+    remarks = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}))
 
     def __init__(self, *args, **kwargs):
         # This form's fields live inside a <dialog> outside the actual
@@ -301,3 +340,11 @@ class ElectronicsProceedForm(forms.Form):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs['form'] = 'action-form'
+
+
+class ElectronicsDispositionForm(forms.Form):
+    """Electronics' final disposition of an already-diagnosed item --
+    Send Back to Warehouse or Scrap -- captured separately from the
+    diagnostic checklist above."""
+
+    outward_reservation_no = forms.CharField(max_length=255, label='Outward reservation number')
