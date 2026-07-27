@@ -1,0 +1,30 @@
+Here's the concrete path from where we are now to a running EC2 deployment:
+
+1. Get an EC2 instance (you do this — I don't have AWS console/CLI access)
+
+Launch an Ubuntu instance (22.04/24.04 LTS is the easy path for Docker).
+Size: t3.small is a reasonable starting point for a Django+MySQL app this size; can resize later.
+Security group: open 22 (SSH, ideally restricted to your IP), 80/443 (HTTP/S). Leave 3306 closed to the internet — MySQL only needs to be reachable inside Docker's network, same as we set up locally.
+Allocate an Elastic IP and associate it, so the address doesn't change on reboot.
+Confirm the instance's security group allows outbound to the clappia RDS host (port 3306) — that external DB stays untouched, just needs network reachability.
+2. Get Docker onto the instance
+
+SSH in, install Docker Engine + the Compose plugin (standard Ubuntu install script from Docker's docs).
+3. Get the code onto the instance
+
+Since this repo has a origin remote on GitHub already, the cleanest path is: commit what's pending here, push, then git clone on the EC2 box. (I haven't committed/pushed anything from this session yet — say when you want that done.)
+.env and config/settings_local.py are both gitignored on purpose (they hold real secrets) — they need to be created directly on the server, not pushed. I can hand you the exact file contents to paste; the only things that must change from what's on this laptop are ALLOWED_HOSTS (needs the EC2 IP/domain) and ideally a fresh SECRET_KEY + a stronger DB_PASSWORD for the DB user (production shouldn't reuse the same "password" we used for the local test).
+4. Get today's data onto the server
+
+The DB image currently has the dump baked in from today. If you keep working locally between now and go-live, that dump will be stale. Simplest: take a fresh mysqldump right before cut-over and rebuild the DB image with it (same process I just ran), or docker exec a fresh import once the container's already running on EC2.
+5. Bring it up
+
+docker compose up -d --build on the instance. First run does migrate + collectstatic automatically (already wired into docker/entrypoint.sh).
+Sanity check: hit http://<ec2-ip>:8000 directly first.
+6. Make it look like a real site (optional but standard)
+
+Right now gunicorn is exposed directly on 8000. For a real deployment you'd normally put nginx in front (port 80/443, forwards to the web container) — mainly needed for a domain name + free TLS via certbot. Can skip this and just use the IP:8000 for now if this is an internal tool.
+7. Ongoing housekeeping
+
+Set up a periodic mysqldump from the DB container to somewhere durable (S3, or even just off-box) — the named volume protects against container recreation, not against instance loss.
+docker compose logs -f for troubleshooting; restart policy is already unless-stopped so containers survive instance reboots.

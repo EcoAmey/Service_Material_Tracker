@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 db.sqlite3
 config/settings_local.py
+.env
+staticfiles/
+docker/mysql-init/*.sql
+DEV-backup-*.zip

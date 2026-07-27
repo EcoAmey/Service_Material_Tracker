@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 from config import settings_local
@@ -21,13 +22,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
+# Every setting below falls back to the existing hardcoded dev value when its
+# env var isn't set, so the bare-metal Windows dev setup is untouched -- only
+# the Docker/EC2 environment actually sets these.
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-pny(la2^wve=16nf-qp=@j^4qn6iol=57a9#q0q*ln!wn%yd7&'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-pny(la2^wve=16nf-qp=@j^4qn6iol=57a9#q0q*ln!wn%yd7&')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [h for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h]
 
 
 # Application definition
@@ -44,6 +49,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -78,19 +84,19 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': settings_local.DB_NAME,
-        'USER': settings_local.DB_USER,
-        'PASSWORD': settings_local.DB_PASSWORD,
-        'HOST': settings_local.DB_HOST,
-        'PORT': settings_local.DB_PORT,
+        'NAME': os.environ.get('DB_NAME', settings_local.DB_NAME),
+        'USER': os.environ.get('DB_USER', settings_local.DB_USER),
+        'PASSWORD': os.environ.get('DB_PASSWORD', settings_local.DB_PASSWORD),
+        'HOST': os.environ.get('DB_HOST', settings_local.DB_HOST),
+        'PORT': os.environ.get('DB_PORT', settings_local.DB_PORT),
     },
     'clappia': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': settings_local.CLAPPIA_DB_NAME,
-        'USER': settings_local.CLAPPIA_DB_USER,
-        'PASSWORD': settings_local.CLAPPIA_DB_PASSWORD,
-        'HOST': settings_local.CLAPPIA_DB_HOST,
-        'PORT': settings_local.CLAPPIA_DB_PORT,
+        'NAME': os.environ.get('CLAPPIA_DB_NAME', settings_local.CLAPPIA_DB_NAME),
+        'USER': os.environ.get('CLAPPIA_DB_USER', settings_local.CLAPPIA_DB_USER),
+        'PASSWORD': os.environ.get('CLAPPIA_DB_PASSWORD', settings_local.CLAPPIA_DB_PASSWORD),
+        'HOST': os.environ.get('CLAPPIA_DB_HOST', settings_local.CLAPPIA_DB_HOST),
+        'PORT': os.environ.get('CLAPPIA_DB_PORT', settings_local.CLAPPIA_DB_PORT),
     },
 }
 
@@ -147,6 +153,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

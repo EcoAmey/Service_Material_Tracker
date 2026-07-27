@@ -1,0 +1,32 @@
+services:
+  db:
+    build: ./docker/mysql-init
+    image: service-tracker-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    # Not published to the host on purpose -- only the web service needs it,
+    # reached over the compose network by service name (DB_HOST=db).
+
+  web:
+    build: .
+    image: service-tracker-web
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      SECRET_KEY: ${SECRET_KEY}
+      DEBUG: ${DEBUG}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "8000:8000"
+
+volumes:
+  mysql_data:
