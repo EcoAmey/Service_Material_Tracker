@@ -104,6 +104,7 @@ AUTHENTICATION_BACKENDS = [
     'tracker.backends.WarehouseBackend',
     'tracker.backends.ServiceDeskBackend',
     'tracker.backends.ElectronicsBackend',
+    'tracker.backends.AdminBackend',
 ]
 
 LOGIN_URL = 'tracker:login'

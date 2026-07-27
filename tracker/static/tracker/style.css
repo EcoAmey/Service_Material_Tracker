@@ -513,6 +513,13 @@ body:has(.auth-page) {
   grid-template-columns: 22px 0.85fr 0.75fr 1.05fr 0.75fr 0.9fr 0.75fr 20px;
 }
 
+/* Admin Dashboard Overview: no checkbox column (read-only, no bulk
+   actions), adds an Engineer column. */
+.cols-admin .table-header-row,
+.cols-admin .row-main {
+  grid-template-columns: 1fr 0.85fr 1.1fr 0.85fr 0.9fr 0.9fr 20px;
+}
+
 .material-table.compact {
   min-width: 0;
   gap: 6px;

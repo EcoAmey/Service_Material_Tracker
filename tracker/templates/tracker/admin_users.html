@@ -1,0 +1,135 @@
+{% extends 'tracker/admin_base.html' %}
+{% load static %}
+
+{% block title %}User Management{% endblock %}
+
+{% block admin_content %}
+    <div class="admin-page-header">
+        <div>
+            <h1 class="admin-page-title">User Management</h1>
+            <p class="admin-page-subtitle">Active logins, roles, and access.</p>
+        </div>
+        <button type="button" class="btn-login" id="add-user-btn">+ Add User</button>
+    </div>
+
+    <div class="admin-table-wrapper">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                    <tr>
+                        <td>{{ u.name }}</td>
+                        <td>{{ u.email }}</td>
+                        <td>{{ u.get_role_display|default:u.role }}</td>
+                        <td><span class="status-badge {% if u.is_active %}dispatched{% else %}pending{% endif %}">{{ u.status }}</span></td>
+                        <td class="admin-table-actions">
+                            <button type="button" class="link-action" data-open="change-password-dialog" data-user-id="{{ u.pk }}" data-user-email="{{ u.email }}">Change Password</button>
+                            <button type="button" class="link-action" data-open="change-role-dialog" data-user-id="{{ u.pk }}" data-user-email="{{ u.email }}" data-user-role="{{ u.role }}">Change Role</button>
+                            <form method="post" action="{% url 'tracker:admin_users_action' %}" class="admin-inline-form">
+                                {% csrf_token %}
+                                <input type="hidden" name="target_user_id" value="{{ u.pk }}">
+                                {% if u.is_active %}
+                                    <input type="hidden" name="action" value="deactivate">
+                                    <button type="submit" class="link-action link-action-danger">Deactivate</button>
+                                {% else %}
+                                    <input type="hidden" name="action" value="activate">
+                                    <button type="submit" class="link-action">Activate</button>
+                                {% endif %}
+                            </form>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="5" class="empty-state">No users yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <dialog id="create-user-dialog">
+        <div class="dialog-content">
+            <h2>Add User</h2>
+            <form method="post" action="{% url 'tracker:admin_users_action' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create">
+                <div class="field">
+                    <label for="id_new_name">Name</label>
+                    <input type="text" name="name" id="id_new_name" required>
+                </div>
+                <div class="field">
+                    <label for="id_new_email">Email</label>
+                    <input type="email" name="email" id="id_new_email" required>
+                </div>
+                <div class="field">
+                    <label for="id_new_password">Password</label>
+                    <input type="text" name="password" id="id_new_password" required>
+                </div>
+                <div class="field">
+                    <label for="id_new_role">Role</label>
+                    <select name="role" id="id_new_role" required>
+                        {% for value, label in role_choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" class="btn-cancel" data-close="create-user-dialog">Cancel</button>
+                    <button type="submit" class="btn-submit">Create</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <dialog id="change-password-dialog">
+        <div class="dialog-content">
+            <h2>Change Password <span id="change-password-target"></span></h2>
+            <form method="post" action="{% url 'tracker:admin_users_action' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="change_password">
+                <input type="hidden" name="target_user_id" id="id_password_target_user_id">
+                <div class="field">
+                    <label for="id_new_password_value">New password</label>
+                    <input type="text" name="new_password" id="id_new_password_value" required>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" class="btn-cancel" data-close="change-password-dialog">Cancel</button>
+                    <button type="submit" class="btn-submit">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <dialog id="change-role-dialog">
+        <div class="dialog-content">
+            <h2>Change Role <span id="change-role-target"></span></h2>
+            <form method="post" action="{% url 'tracker:admin_users_action' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="change_role">
+                <input type="hidden" name="target_user_id" id="id_role_target_user_id">
+                <div class="field">
+                    <label for="id_new_role_value">Role</label>
+                    <select name="role" id="id_new_role_value" required>
+                        {% for value, label in role_choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" class="btn-cancel" data-close="change-role-dialog">Cancel</button>
+                    <button type="submit" class="btn-submit">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+{% endblock %}
+
+{% block admin_scripts %}
+    <script src="{% static 'tracker/admin_users.js' %}?v=1"></script>
+{% endblock %}

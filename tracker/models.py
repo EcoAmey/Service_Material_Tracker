@@ -16,6 +16,17 @@ class User(AbstractBaseUser):
     reads and writes rows in the columns already defined below.
     """
 
+    # One RoleBackend per role in AUTHENTICATION_BACKENDS (tracker/backends.py)
+    # -- this is the exhaustive set of roles this app actually authenticates.
+    ROLE_CHOICES = [
+        ('engineer', 'Engineer'),
+        ('regwarehouse', 'Regional Warehouse'),
+        ('warehouse', 'Warehouse'),
+        ('servicedesk', 'Service Desk'),
+        ('electronics', 'Electronics'),
+        ('admin', 'Admin'),
+    ]
+
     # Explicit to match the real column type (int), overriding the
     # project-wide BigAutoField default which would mismatch on FKs.
     id = models.AutoField(primary_key=True)
@@ -27,7 +38,7 @@ class User(AbstractBaseUser):
     # AbstractBaseUser already defines a `password` field; we redeclare it
     # here only to point at the real column name, password_hash.
     password = models.CharField(max_length=255, db_column='password_hash')
-    role = models.CharField(max_length=50)
+    role = models.CharField(max_length=50, choices=ROLE_CHOICES)
     status = models.CharField(max_length=20)
 
     objects = UserManager()

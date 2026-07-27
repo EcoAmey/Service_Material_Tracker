@@ -1,0 +1,46 @@
+{% extends 'tracker/admin_base.html' %}
+{% load static %}
+
+{% block title %}Material Lookup{% endblock %}
+
+{% block admin_content %}
+    <h1 class="admin-page-title">Material Lookup</h1>
+    <p class="admin-page-subtitle">Search by service ID, machine no, or faulty serial to see a material's full history.</p>
+
+    <form class="admin-lookup-form" method="get" action="{% url 'tracker:admin_lookup' %}">
+        <input type="search" name="q" value="{{ query }}" placeholder="Service ID, machine no, or faulty serial...">
+        <button type="submit" class="btn-login">Search</button>
+    </form>
+
+    {% if query %}
+        {% for item in results %}
+            <div class="admin-result-card">
+                <div class="admin-result-header">
+                    <h3>{{ item.service_id }} &mdash; {{ item.material_name }} ({{ item.get_part_type_display }})</h3>
+                    <span class="status-badge {% if item.status == 'scrapped' or item.status == 'added_to_stock' or item.status == 'repaired' or item.status == 'tested_ok' %}dispatched{% else %}pending{% endif %}">
+                        {% if item.electronics_final_remark %}{{ item.get_electronics_final_remark_display }}{% else %}{{ item.get_status_display }}{% endif %}
+                    </span>
+                </div>
+                <div class="field-pair"><dt>Machine No</dt><dd>{{ item.controller_serial }}</dd></div>
+                <div class="field-pair"><dt>Faulty S/N</dt><dd>{{ item.faulty_serial }}</dd></div>
+                <div class="field-pair"><dt>Engineer</dt><dd>{{ item.service_person_name }}</dd></div>
+
+                <ul class="admin-timeline">
+                    {% for event in item.status_events.all %}
+                        <li>
+                            <div class="admin-timeline-status">{{ event.get_status_display }}</div>
+                            <div class="admin-timeline-meta">{{ event.changed_at|date:"d M Y, H:i" }}{% if event.changed_by %} &middot; {{ event.changed_by.name }}{% endif %}</div>
+                            {% if event.remarks %}
+                                <div class="admin-timeline-remarks">{{ event.remarks }}</div>
+                            {% endif %}
+                        </li>
+                    {% empty %}
+                        <li>No history recorded yet.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% empty %}
+            <p class="empty-state">No materials match "{{ query }}".</p>
+        {% endfor %}
+    {% endif %}
+{% endblock %}

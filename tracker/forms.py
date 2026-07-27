@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import DeliveryPartner, DispatchLocation
+from .models import DeliveryPartner, DispatchLocation, User
 
 
 class DeliveryPartnerFieldsMixin(forms.Form):
@@ -348,3 +348,21 @@ class ElectronicsDispositionForm(forms.Form):
     diagnostic checklist above."""
 
     outward_reservation_no = forms.CharField(max_length=255, label='Outward reservation number')
+
+
+class CreateUserForm(forms.Form):
+    """Admin creating a new login -- this app stores passwords in plaintext
+    (see User.check_password), so no hashing step is needed here."""
+
+    name = forms.CharField(max_length=255)
+    email = forms.CharField(max_length=255)
+    password = forms.CharField(max_length=255)
+    role = forms.ChoiceField(choices=User.ROLE_CHOICES)
+
+
+class ChangePasswordForm(forms.Form):
+    new_password = forms.CharField(max_length=255, label='New password')
+
+
+class ChangeRoleForm(forms.Form):
+    role = forms.ChoiceField(choices=User.ROLE_CHOICES)

@@ -45,3 +45,7 @@ class ServiceDeskBackend(RoleBackend):
 
 class ElectronicsBackend(RoleBackend):
     role = 'electronics'
+
+
+class AdminBackend(RoleBackend):
+    role = 'admin'

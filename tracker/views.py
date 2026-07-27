@@ -1,3 +1,5 @@
+from collections import Counter
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import IntegrityError, transaction
@@ -11,6 +13,9 @@ from .forms import (
     AddToStockForm,
     CardOemDispatchForm,
     CardScrapForm,
+    ChangePasswordForm,
+    ChangeRoleForm,
+    CreateUserForm,
     DispatchForm,
     ElectronicsAssignmentForm,
     ElectronicsDispositionForm,
@@ -20,7 +25,7 @@ from .forms import (
     ReceiveMaterialForm,
     WarehouseRemarksForm,
 )
-from .models import DeliveryPartner, Dispatch, DispatchItem, DispatchLocation
+from .models import DeliveryPartner, Dispatch, DispatchItem, DispatchLocation, User
 from .services import (
     get_electronics_items,
     get_material_lines_for_engineer,
@@ -35,6 +40,8 @@ class HomeDispatchView(LoginRequiredMixin, View):
     login_url = 'tracker:login'
 
     def get(self, request, *args, **kwargs):
+        if request.user.role == 'admin':
+            return redirect('tracker:admin_dashboard')
         if request.user.role == 'regwarehouse':
             return redirect('tracker:warehouse_home')
         if request.user.role == 'warehouse':
@@ -44,6 +51,192 @@ class HomeDispatchView(LoginRequiredMixin, View):
         if request.user.role == 'electronics':
             return redirect('tracker:electronics_home')
         return redirect('tracker:engineer_home')
+
+
+class AdminRequiredMixin(LoginRequiredMixin):
+    """Restricts a view to the 'admin' role, redirecting anyone else to
+    their own home page -- shared by every admin-dashboard view."""
+
+    login_url = 'tracker:login'
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated and request.user.role != 'admin':
+            messages.error(request, 'You do not have access to the admin dashboard.')
+            return redirect('tracker:home')
+        return super().dispatch(request, *args, **kwargs)
+
+
+class AdminDashboardView(AdminRequiredMixin, TemplateView):
+    """Admin-only overview: every material in the system, at whatever
+    stage it's currently at -- unlike every operational page, not scoped
+    to one role/destination."""
+
+    template_name = 'tracker/admin_dashboard.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['admin_section'] = 'dashboard'
+        context['items'] = DispatchItem.objects.select_related(
+            'dispatch', 'dispatch__destination', 'forward_dispatch__destination'
+        ).order_by('-created_at')
+        context['engineer_names'] = (
+            DispatchItem.objects.exclude(service_person_name='')
+            .order_by('service_person_name')
+            .values_list('service_person_name', flat=True)
+            .distinct()
+        )
+        return context
+
+
+class AdminUserManagementView(AdminRequiredMixin, TemplateView):
+    """Admin-only: list every login, create new ones, and change an
+    existing one's password/role/active status."""
+
+    template_name = 'tracker/admin_users.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['admin_section'] = 'users'
+        context['users'] = User.objects.order_by('name')
+        context['role_choices'] = User.ROLE_CHOICES
+        return context
+
+
+class AdminUserActionView(AdminRequiredMixin, View):
+    """Handles the admin acting on one user account at a time -- creating
+    a new one, or changing an existing one's password/role/active status."""
+
+    ACTIONS = {'create', 'change_password', 'change_role', 'activate', 'deactivate'}
+
+    def post(self, request, *args, **kwargs):
+        action = request.POST.get('action')
+        if action not in self.ACTIONS:
+            messages.error(request, 'Unknown action.')
+            return redirect('tracker:admin_users')
+
+        if action == 'create':
+            form = CreateUserForm(request.POST)
+            if not form.is_valid():
+                messages.error(request, 'Please correct the errors in the new user form.')
+                return redirect('tracker:admin_users')
+            data = form.cleaned_data
+            if User.objects.filter(email__iexact=data['email']).exists():
+                messages.error(request, f"A user with email {data['email']} already exists.")
+                return redirect('tracker:admin_users')
+            User.objects.create(
+                name=data['name'], email=data['email'], password=data['password'],
+                role=data['role'], status='active',
+            )
+            messages.success(request, f"Created user {data['email']}.")
+            return redirect('tracker:admin_users')
+
+        target_id = request.POST.get('target_user_id')
+        target = User.objects.filter(pk=target_id).first()
+        if not target:
+            messages.error(request, 'Select a valid user for this action.')
+            return redirect('tracker:admin_users')
+
+        if action == 'change_password':
+            form = ChangePasswordForm(request.POST)
+            if not form.is_valid():
+                messages.error(request, 'Please enter a new password.')
+                return redirect('tracker:admin_users')
+            target.password = form.cleaned_data['new_password']
+            target.save()
+            messages.success(request, f'Password updated for {target.email}.')
+            return redirect('tracker:admin_users')
+
+        if action == 'change_role':
+            form = ChangeRoleForm(request.POST)
+            if not form.is_valid():
+                messages.error(request, 'Please select a role.')
+                return redirect('tracker:admin_users')
+            target.role = form.cleaned_data['role']
+            target.save()
+            messages.success(request, f'Role updated for {target.email}.')
+            return redirect('tracker:admin_users')
+
+        # activate / deactivate
+        if action == 'deactivate' and target.pk == request.user.pk:
+            messages.error(request, 'You cannot deactivate your own account.')
+            return redirect('tracker:admin_users')
+        target.status = 'active' if action == 'activate' else 'inactive'
+        target.save()
+        messages.success(request, f"{target.email} {'activated' if action == 'activate' else 'deactivated'}.")
+        return redirect('tracker:admin_users')
+
+
+class AdminReportsView(AdminRequiredMixin, TemplateView):
+    """Admin-only: status-distribution and component-failure charts,
+    rendered as simple percentage-of-max bar lists (no charting library)."""
+
+    template_name = 'tracker/admin_reports.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['admin_section'] = 'reports'
+
+        status_counts = Counter(DispatchItem.objects.values_list('status', flat=True))
+        status_labels = dict(DispatchItem.STATUS_CHOICES)
+        max_status_count = max(status_counts.values(), default=1)
+        context['status_bars'] = sorted(
+            (
+                {
+                    'label': status_labels.get(status, status),
+                    'count': count,
+                    'percent': round(count / max_status_count * 100),
+                }
+                for status, count in status_counts.items()
+            ),
+            key=lambda bar: bar['count'],
+            reverse=True,
+        )
+
+        sub_category_counts = Counter()
+        for value in DispatchItem.objects.exclude(electronics_sub_category__isnull=True).exclude(
+            electronics_sub_category=''
+        ).values_list('electronics_sub_category', flat=True):
+            for part in value.split(', '):
+                part = part.strip()
+                if part:
+                    sub_category_counts[part] += 1
+        max_sub_category_count = max(sub_category_counts.values(), default=1)
+        context['component_bars'] = sorted(
+            (
+                {'label': label, 'count': count, 'percent': round(count / max_sub_category_count * 100)}
+                for label, count in sub_category_counts.items()
+            ),
+            key=lambda bar: bar['count'],
+            reverse=True,
+        )
+        return context
+
+
+class AdminMaterialLookupView(AdminRequiredMixin, TemplateView):
+    """Admin-only: search by service ID / machine no / faulty serial, and
+    see a material's full status history from dispatch to final remark."""
+
+    template_name = 'tracker/admin_lookup.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['admin_section'] = 'lookup'
+        query = self.request.GET.get('q', '').strip()
+        context['query'] = query
+        if query:
+            context['results'] = (
+                DispatchItem.objects.filter(
+                    Q(service_id__icontains=query)
+                    | Q(controller_serial__icontains=query)
+                    | Q(faulty_serial__icontains=query)
+                )
+                .select_related('dispatch', 'dispatch__destination', 'forward_dispatch__destination')
+                .prefetch_related('status_events', 'status_events__changed_by')
+                .order_by('-created_at')
+            )
+        else:
+            context['results'] = []
+        return context
 
 
 class EngineerHomeView(LoginRequiredMixin, TemplateView):

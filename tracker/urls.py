@@ -18,5 +18,10 @@ urlpatterns = [
     path('service-desk/action/', views.ServiceDeskActionView.as_view(), name='service_desk_action'),
     path('electronics/', views.ElectronicsHomeView.as_view(), name='electronics_home'),
     path('electronics/action/', views.ElectronicsActionView.as_view(), name='electronics_action'),
+    path('admin-dashboard/', views.AdminDashboardView.as_view(), name='admin_dashboard'),
+    path('admin-dashboard/users/', views.AdminUserManagementView.as_view(), name='admin_users'),
+    path('admin-dashboard/users/action/', views.AdminUserActionView.as_view(), name='admin_users_action'),
+    path('admin-dashboard/reports/', views.AdminReportsView.as_view(), name='admin_reports'),
+    path('admin-dashboard/lookup/', views.AdminMaterialLookupView.as_view(), name='admin_lookup'),
     path('', views.HomeDispatchView.as_view(), name='home'),
 ]

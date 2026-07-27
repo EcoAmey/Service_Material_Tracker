@@ -1,0 +1,157 @@
+{% extends 'tracker/admin_base.html' %}
+{% load static %}
+
+{% block title %}Dashboard Overview{% endblock %}
+
+{% block admin_content %}
+    <h1 class="admin-page-title">Dashboard Overview</h1>
+    <p class="admin-page-subtitle">Every material in the system, at whatever stage it's currently at.</p>
+
+    <div class="toolbar">
+        <div class="search-field">
+            <input type="search" id="material-search" placeholder="Search by service ID, machine no, faulty serial, engineer...">
+        </div>
+        <div class="filter-field">
+            <select id="part-type-filter">
+                <option value="">All part types</option>
+                <option value="power_card">Power Card</option>
+                <option value="control_card">Control Card</option>
+                <option value="material">Motor/Pump</option>
+            </select>
+        </div>
+        <div class="filter-field">
+            <select id="engineer-filter">
+                <option value="">All engineers</option>
+                {% for name in engineer_names %}
+                    <option value="{{ name }}">{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="date-range">
+            <input type="date" id="date-from" aria-label="From date">
+            <span>to</span>
+            <input type="date" id="date-to" aria-label="To date">
+        </div>
+        <div class="sort-field">
+            <select id="sort-order">
+                <option value="desc">Newest first</option>
+                <option value="asc">Oldest first</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="tabs admin-tabs-wrap">
+        <button type="button" class="tab-btn active" data-tab="dispatched">Pending (Service Engineer)</button>
+        <button type="button" class="tab-btn" data-tab="dispatched_to_warehouse">Warehouse</button>
+        <button type="button" class="tab-btn" data-tab="with_service_desk">With Service Desk</button>
+        <button type="button" class="tab-btn" data-tab="with_electronics">With Electronics</button>
+        <button type="button" class="tab-btn" data-tab="pending_oem_scrap">Pending OEM/Scrap</button>
+        <button type="button" class="tab-btn" data-tab="dispatched_to_oem">Dispatched to OEM</button>
+        <button type="button" class="tab-btn" data-tab="electronics_completed">Completed (Electronics)</button>
+        <button type="button" class="tab-btn" data-tab="repaired_by_electronics">Repaired from Electronics</button>
+        <button type="button" class="tab-btn" data-tab="added_to_stock">Added to Stock</button>
+        <button type="button" class="tab-btn" data-tab="repaired_or_tested_ok">Repaired / Tested OK</button>
+        <button type="button" class="tab-btn" data-tab="scrapped">Scrapped</button>
+    </div>
+
+    <div class="table-wrapper">
+        <div class="material-table compact cols-admin">
+            <div class="table-header-row">
+                <div>Service ID</div>
+                <div>Machine No</div>
+                <div>Material</div>
+                <div>Faulty S/N</div>
+                <div>Engineer</div>
+                <div>Status</div>
+                <div></div>
+            </div>
+
+            {% for item in items %}
+                <div class="table-row"
+                     data-status="{% if item.status == 'repaired' or item.status == 'tested_ok' %}repaired_or_tested_ok{% else %}{{ item.status }}{% endif %}"
+                     data-part-type="{{ item.part_type }}"
+                     data-engineer="{{ item.service_person_name }}"
+                     data-date="{{ item.effective_arrival_date|date:'U' }}"
+                     data-search="{{ item.service_id|lower }} {{ item.material_name|lower }} {{ item.faulty_serial|lower }} {{ item.controller_serial|lower }} {{ item.service_person_name|lower }}">
+                    <div class="row-main">
+                        <div class="col" data-label="Service ID">{{ item.service_id }}</div>
+                        <div class="col" data-label="Machine No">{{ item.controller_serial }}</div>
+                        <div class="col" data-label="Material">
+                            <span class="material-name">{{ item.material_name }}</span>
+                            <span class="part-type">{{ item.get_part_type_display }}</span>
+                        </div>
+                        <div class="col" data-label="Faulty S/N">{{ item.faulty_serial }}</div>
+                        <div class="col" data-label="Engineer">{{ item.service_person_name }}</div>
+                        <div class="col" data-label="Status">
+                            <span class="status-badge {% if item.status == 'scrapped' or item.status == 'added_to_stock' or item.status == 'repaired' or item.status == 'tested_ok' %}dispatched{% else %}pending{% endif %}">{% if item.electronics_final_remark %}{{ item.get_electronics_final_remark_display }}{% else %}{{ item.get_status_display }}{% endif %}</span>
+                        </div>
+                        <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
+                    </div>
+                    <div class="row-details" hidden>
+                        <div class="field-pair"><dt>SI Details</dt><dd>{{ item.si_details }}</dd></div>
+                        <div class="field-pair"><dt>Farmer</dt><dd>{{ item.farmer_name }}</dd></div>
+                        <div class="field-pair"><dt>Location</dt><dd>{{ item.location }}</dd></div>
+                        <div class="field-pair"><dt>Replacement Date</dt><dd>{{ item.replacement_date|date:"d M Y" }}</dd></div>
+                        <div class="field-pair"><dt>Destination</dt><dd>{{ item.dispatch.destination.name }}</dd></div>
+                        <div class="field-pair"><dt>LR No.</dt><dd>{{ item.effective_dispatch.lr_number }}</dd></div>
+                        <div class="field-pair"><dt>Challan No.</dt><dd>{{ item.effective_dispatch.delivery_challan_number }}</dd></div>
+                        {% if item.forward_dispatch %}
+                            <div class="field-pair"><dt>Forwarded To</dt><dd>{{ item.forward_dispatch.destination.name }}</dd></div>
+                        {% endif %}
+                        {% if item.received_date %}
+                            <div class="field-pair"><dt>Received On</dt><dd>{{ item.received_date|date:"d M Y" }}</dd></div>
+                            <div class="field-pair"><dt>Serial Match</dt><dd>{% if item.received_serial_matches %}Yes{% else %}No{% endif %}</dd></div>
+                            <div class="field-pair"><dt>Reservation No.</dt><dd>{{ item.warehouse_reservation_no }}</dd></div>
+                        {% endif %}
+                        {% if item.oem_inward_reservation_no %}
+                            <div class="field-pair"><dt>OEM Inward Reservation No.</dt><dd>{{ item.oem_inward_reservation_no }}</dd></div>
+                        {% endif %}
+                        {% if item.oem_outward_reservation_no %}
+                            <div class="field-pair"><dt>OEM Outward Reservation No.</dt><dd>{{ item.oem_outward_reservation_no }}</dd></div>
+                        {% endif %}
+                        {% if item.oem_dispatch_lr_no %}
+                            <div class="field-pair"><dt>OEM Dispatch LR No.</dt><dd>{{ item.oem_dispatch_lr_no }}</dd></div>
+                            <div class="field-pair"><dt>OEM Dispatch Challan No.</dt><dd>{{ item.oem_dispatch_challan_no }}</dd></div>
+                        {% endif %}
+                        {% if item.scrap_condition %}
+                            <div class="field-pair"><dt>Scrap Condition</dt><dd>{{ item.get_scrap_condition_display }}</dd></div>
+                        {% endif %}
+                        {% if item.inspection_problem %}
+                            <div class="field-pair"><dt>SD Problem</dt><dd>{{ item.inspection_problem }}</dd></div>
+                            <div class="field-pair"><dt>SD Visual Inspection</dt><dd>{% if item.inspection_visual_done %}Yes{% else %}No{% endif %}</dd></div>
+                            <div class="field-pair"><dt>SD MTR Test</dt><dd>{% if item.inspection_mtr_test_passed %}Passed{% else %}Failed{% endif %}</dd></div>
+                            <div class="field-pair"><dt>SD Cold Test</dt><dd>{% if item.inspection_cold_test_passed %}Passed{% else %}Failed{% endif %}</dd></div>
+                            <div class="field-pair"><dt>SD Wiring</dt><dd>{% if item.inspection_wiring_repaired %}Repaired{% else %}Was OK{% endif %}</dd></div>
+                        {% endif %}
+                        {% if item.electronics_engineer_name %}
+                            <div class="field-pair"><dt>Electronics Engineer</dt><dd>{{ item.electronics_engineer_name }}</dd></div>
+                            <div class="field-pair"><dt>Initial Observation</dt><dd>{{ item.electronics_initial_observation }}</dd></div>
+                            <div class="field-pair"><dt>PCB Type</dt><dd>{{ item.electronics_pcb_type }}</dd></div>
+                            <div class="field-pair"><dt>PCB Issue</dt><dd>{{ item.electronics_pcb_issue }}</dd></div>
+                            <div class="field-pair"><dt>Failure Category</dt><dd>{{ item.electronics_failure_category }}</dd></div>
+                            <div class="field-pair"><dt>Sub Category</dt><dd>{{ item.electronics_sub_category }}</dd></div>
+                            <div class="field-pair"><dt>IGBT Pin Status</dt><dd>{{ item.electronics_igbt_pin_status }}</dd></div>
+                            <div class="field-pair"><dt>Final Remark</dt><dd>{{ item.get_electronics_final_remark_display|default:"-" }}</dd></div>
+                        {% endif %}
+                        {% if item.electronics_outward_reservation_no %}
+                            <div class="field-pair"><dt>Electronics Outward Reservation No.</dt><dd>{{ item.electronics_outward_reservation_no }}</dd></div>
+                        {% endif %}
+                        {% if item.stock_outward_reservation_no %}
+                            <div class="field-pair"><dt>Stock Outward Reservation No.</dt><dd>{{ item.stock_outward_reservation_no }}</dd></div>
+                        {% endif %}
+                        <div class="field-pair"><dt>Action Remarks</dt><dd>{{ item.status_remarks|default:"-" }}</dd></div>
+                        <div class="field-pair"><dt>Updated By</dt><dd>{{ item.status_updated_by.name|default:"-" }}</dd></div>
+                        <div class="field-pair"><dt>Updated On</dt><dd>{{ item.status_updated_at|date:"d M Y, H:i"|default:"-" }}</dd></div>
+                    </div>
+                </div>
+            {% empty %}
+                <p class="empty-state">No materials in the system yet.</p>
+            {% endfor %}
+        </div>
+    </div>
+    <p class="empty-state" id="no-items-message" hidden>Nothing here.</p>
+{% endblock %}
+
+{% block admin_scripts %}
+    <script src="{% static 'tracker/admin_dashboard.js' %}?v=1"></script>
+{% endblock %}
