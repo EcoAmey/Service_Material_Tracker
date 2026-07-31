@@ -147,6 +147,36 @@
             {% empty %}
                 <p class="empty-state">No materials in the system yet.</p>
             {% endfor %}
+
+            {% for line in pending_lines %}
+                <div class="table-row"
+                     data-status="dispatched"
+                     data-part-type="{{ line.part_type }}"
+                     data-engineer="{{ line.service_person_name }}"
+                     data-date="{{ line.replacement_date|date:'U' }}"
+                     data-search="{{ line.service_id|lower }} {{ line.material_name|lower }} {{ line.faulty_serial|lower }} {{ line.controller_serial|lower }} {{ line.service_person_name|lower }}">
+                    <div class="row-main">
+                        <div class="col" data-label="Service ID">{{ line.service_id }}</div>
+                        <div class="col" data-label="Machine No">{{ line.controller_serial }}</div>
+                        <div class="col" data-label="Material">
+                            <span class="material-name">{{ line.material_name }}</span>
+                            <span class="part-type">{{ line.part_type_label }}</span>
+                        </div>
+                        <div class="col" data-label="Faulty S/N">{{ line.faulty_serial }}</div>
+                        <div class="col" data-label="Engineer">{{ line.service_person_name }}</div>
+                        <div class="col" data-label="Status">
+                            <span class="status-badge pending">Yet to Dispatch</span>
+                        </div>
+                        <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
+                    </div>
+                    <div class="row-details" hidden>
+                        <div class="field-pair"><dt>SI Details</dt><dd>{{ line.si_details }}</dd></div>
+                        <div class="field-pair"><dt>Farmer</dt><dd>{{ line.farmer_name }}</dd></div>
+                        <div class="field-pair"><dt>Location</dt><dd>{{ line.location }}</dd></div>
+                        <div class="field-pair"><dt>Replacement Date</dt><dd>{{ line.replacement_date|date:"d M Y" }}</dd></div>
+                    </div>
+                </div>
+            {% endfor %}
         </div>
     </div>
     <p class="empty-state" id="no-items-message" hidden>Nothing here.</p>

@@ -79,12 +79,13 @@ class AdminDashboardView(AdminRequiredMixin, TemplateView):
         context['items'] = DispatchItem.objects.select_related(
             'dispatch', 'dispatch__destination', 'forward_dispatch__destination'
         ).order_by('-created_at')
-        context['engineer_names'] = (
-            DispatchItem.objects.exclude(service_person_name='')
-            .order_by('service_person_name')
-            .values_list('service_person_name', flat=True)
-            .distinct()
+        pending_lines = [line for line in get_material_lines_for_engineer() if not line.is_dispatched]
+        context['pending_lines'] = pending_lines
+        engineer_names = set(
+            DispatchItem.objects.exclude(service_person_name='').values_list('service_person_name', flat=True)
         )
+        engineer_names.update(line.service_person_name for line in pending_lines if line.service_person_name)
+        context['engineer_names'] = sorted(engineer_names)
         return context
 
 

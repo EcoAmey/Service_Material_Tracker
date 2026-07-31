@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from .models import ClappiaData, DispatchItem, DispatchItemStatusEvent
+from .models import ClappiaData, DispatchItem, DispatchItemStatusEvent, User
 
 # ez_service holds records going back to 2019 (lakhs of rows) -- only
 # tickets registered on or after this date are considered. Rows with no
@@ -67,8 +67,10 @@ class MaterialLine:
         return f'{self.service_id}|{self.part_type}|{self.faulty_serial}'
 
 
-def get_material_lines_for_engineer(email):
-    """Every material an engineer has replaced, one row per replaced part.
+def get_material_lines_for_engineer(email=None):
+    """Every material replaced, one row per replaced part -- for one
+    engineer, or every engineer if email is omitted (used by the admin
+    dashboard to show items still pending dispatch).
 
     A single completed visit can have a Power card, a Control card, and up
     to 3 generic materials all replaced at once -- each becomes its own
@@ -76,9 +78,16 @@ def get_material_lines_for_engineer(email):
     considered; the source table also holds in-progress ones, and years of
     older data before the cutoff.
     """
-    tickets = ClappiaData.objects.filter(
-        engineer_email__iexact=email, status__iexact='completed', complaint_reg_date__gte=DATA_CUTOFF_DATE
-    )
+    tickets = ClappiaData.objects.filter(status__iexact='completed', complaint_reg_date__gte=DATA_CUTOFF_DATE)
+    if email:
+        tickets = tickets.filter(engineer_email__iexact=email)
+        registered_emails = None
+    else:
+        # Admin "all engineers" view -- only show tickets from engineers who
+        # actually have a login, not every free-text name in clappia_data.
+        registered_emails = {
+            e.lower() for e in User.objects.filter(role='engineer', status='active').values_list('email', flat=True)
+        }
     dispatched_keys = set(
         DispatchItem.objects.values_list('service_id', 'part_type', 'faulty_serial')
     )
@@ -89,6 +98,8 @@ def get_material_lines_for_engineer(email):
     # two genuinely different materials (e.g. a motor and a pump).
     lines_by_key = {}
     for ticket in tickets:
+        if registered_emails is not None and (ticket.engineer_email or '').lower() not in registered_emails:
+            continue
         replacement_date = datetime.combine(ticket.complaint_reg_date, datetime.min.time())
         for part_type, faulty_field, label, name_field in PART_TYPES:
             faulty_serial = _clean(getattr(ticket, faulty_field))

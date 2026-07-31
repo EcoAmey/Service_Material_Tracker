@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Service Material Tracker — User Manual</title>
+<style>
+  @page { size: A4; margin: 16mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #1f2937;
+    line-height: 1.5;
+    font-size: 12px;
+  }
+  .cover {
+    background: linear-gradient(135deg, #0b7a44, #0f9d58);
+    color: #fff;
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 26px;
+  }
+  .cover .tag {
+    color: #d7f5e3;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 11px;
+    margin-bottom: 10px;
+  }
+  .cover h1 { font-size: 24px; margin: 0 0 8px; line-height: 1.25; color: #fff; }
+  .cover p.sub { font-size: 12.5px; color: #e3f5e9; max-width: 620px; margin: 0; }
+  h1 { color: #0b7a44; font-size: 20px; border-bottom: 2px solid #0f9d58; padding-bottom: 6px; margin: 0 0 10px; }
+  h2 {
+    color: #fff;
+    background: #0b7a44;
+    font-size: 14px;
+    margin: 22px 0 12px;
+    padding: 7px 12px;
+    border-radius: 6px;
+    page-break-after: avoid;
+  }
+  h3 { color: #0b7a44; font-size: 13px; margin: 14px 0 6px; page-break-after: avoid; }
+  p { margin: 6px 0 10px; }
+  code {
+    background: #eef3f0;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: 'Consolas', monospace;
+    font-size: 11px;
+  }
+  strong { color: #0b7a44; }
+  .fig {
+    margin: 10px 0 16px;
+    page-break-inside: avoid;
+    text-align: center;
+  }
+  .fig img {
+    width: 100%;
+    max-width: 100%;
+    border: 1px solid #dfe7e2;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    display: inline-block;
+  }
+  .fig .cap {
+    font-size: 10.5px;
+    color: #6b7280;
+    margin-top: 5px;
+    font-style: italic;
+    text-align: left;
+  }
+  ol, ul { padding-left: 20px; margin: 6px 0; }
+  li { margin-bottom: 4px; }
+  blockquote {
+    border-left: 3px solid #0f9d58;
+    margin: 14px 0;
+    padding: 8px 14px;
+    background: #f2f8f4;
+    color: #374151;
+  }
+  .footer-note {
+    margin-top: 40px;
+    padding-top: 12px;
+    border-top: 1px solid #dfe7e2;
+    color: #6b7280;
+    font-size: 10.5px;
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="tag">Internal Documentation</div>
+  <h1>Service Material Tracker<br>User Manual</h1>
+  <p class="sub">
+    A step-by-step guide to every role in the system, with screenshots. See
+    the Application Overview document if you want to understand what the
+    app <em>is</em> and how it's built — this one is about how to use it.
+  </p>
+</div>
+
+<h1 style="border:none;font-size:15px;color:#374151;">Before you start</h1>
+<p>
+Every page has the same toolbar at the top: a search box, a part-type
+filter, a date range, and a sort order — use these to narrow down a long
+list before you start working.
+</p>
+<div class="fig">
+  <img src="screenshots/00_login.png" alt="Login page">
+  <div class="cap">Login page — which page you land on afterward depends on your role.</div>
+</div>
+
+<h2>1. Engineer</h2>
+<p>
+The Engineer's home page lists every faulty part you've logged, split into
+two tabs: <strong>Pending</strong> (not yet shipped out) and
+<strong>Dispatched</strong> (already on its way).
+</p>
+<div class="fig">
+  <img src="screenshots/01_engineer_home.png" alt="Engineer home page">
+  <div class="cap">Engineer home page.</div>
+</div>
+<h3>To dispatch material</h3>
+<ol>
+<li>Tick the checkbox next to one or more pending items.</li>
+<li>Click <strong>Dispatch</strong> at the bottom right.</li>
+<li>Fill in the Pickup Number, LR Number, Delivery Challan Number, choose a Delivery Partner and a Destination (a warehouse), add any remarks, and click <strong>Confirm Dispatch</strong>.</li>
+</ol>
+<div class="fig">
+  <img src="screenshots/02_engineer_dispatch_dialog.png" alt="Dispatch dialog">
+  <div class="cap">Dispatch dialog.</div>
+</div>
+
+<h2>2. Regional Warehouse</h2>
+<p>
+Some material is routed through a Regional Warehouse first. Its home page
+has five tabs: <strong>Incoming</strong>, <strong>Tested OK</strong>,
+<strong>Repaired</strong>, <strong>Dispatched to OEM</strong>, and
+<strong>Dispatched to Warehouse</strong>.
+</p>
+<div class="fig">
+  <img src="screenshots/03_regwarehouse_home.png" alt="Regional Warehouse home page">
+  <div class="cap">Regional Warehouse home page.</div>
+</div>
+<h3>For an incoming item, you have two kinds of action</h3>
+<ul>
+<li><strong>Simple status update</strong> (Tested OK / Repaired / Dispatched to OEM) — select the item, click the matching button, add an optional remark, and confirm.</li>
+<li><strong>Forward it on to the Main Warehouse</strong> — select the item, click <strong>Dispatch</strong>, and fill in the same shipment details an Engineer would.</li>
+</ul>
+<div class="fig">
+  <img src="screenshots/04_regwarehouse_forward_dialog.png" alt="Dispatch onward dialog">
+  <div class="cap">Dispatch onward dialog.</div>
+</div>
+
+<h2>3. Main Warehouse</h2>
+<p>
+This is the busiest page — it has a tab for every stage a part can be in on
+its way through the warehouse: <strong>Incoming</strong>, <strong>Pending
+OEM/Scrap</strong>, <strong>With Service Desk</strong>, <strong>With
+Electronics</strong>, <strong>Repaired from Electronics</strong>,
+<strong>Added to Stock</strong>, <strong>Dispatched to OEM</strong>, and
+<strong>Scrapped</strong>.
+</p>
+<div class="fig">
+  <img src="screenshots/05_mainwarehouse_home.png" alt="Main Warehouse home page">
+  <div class="cap">Main Warehouse home page.</div>
+</div>
+<h3>Receiving an incoming Power Card / Control Card / RMU</h3>
+<p>
+Select it and click <strong>Receive</strong>. Record the date it physically
+arrived, whether the serial number on the part matches the paperwork, a
+reservation number, and (if it doesn't match) a mandatory remark explaining
+why.
+</p>
+<div class="fig">
+  <img src="screenshots/06_mainwarehouse_receive_dialog.png" alt="Receive material dialog">
+  <div class="cap">Receive material dialog.</div>
+</div>
+<blockquote>
+A Power/Control Card whose serial number starts with <strong>P</strong>, or
+any motor/pump, skips Service Desk and Electronics entirely — after
+receiving, it goes straight to a <strong>Dispatch to OEM / Scrap</strong>
+decision instead.
+</blockquote>
+<h3>Dispatch to OEM / Scrap</h3>
+<p>
+For motors, pumps, and the P-serial cards just described: select the item
+and click the matching button. Record the inward and outward reservation
+numbers and an optional remark.
+</p>
+<div class="fig">
+  <img src="screenshots/07_mainwarehouse_oem_dialog.png" alt="Dispatch to OEM dialog">
+  <div class="cap">Dispatch to OEM dialog.</div>
+</div>
+<h3>Add to Stock</h3>
+<p>
+Once Electronics has repaired something and sent it back: select it, click
+<strong>Add to Stock</strong>, enter the outward reservation number, and
+confirm. This is the last step in a part's journey.
+</p>
+<div class="fig">
+  <img src="screenshots/08_mainwarehouse_addstock_dialog.png" alt="Add to Stock dialog">
+  <div class="cap">Add to Stock dialog.</div>
+</div>
+
+<h2>4. Service Desk</h2>
+<p>Two tabs: <strong>Pending Inspection</strong> and <strong>With Electronics</strong>.</p>
+<div class="fig">
+  <img src="screenshots/09_servicedesk_home.png" alt="Service Desk home page">
+  <div class="cap">Service Desk home page.</div>
+</div>
+<h3>To inspect and assign to Electronics</h3>
+<p>Select one or more pending items, click <strong>Assign to Electronics</strong>, and fill in the full inspection checklist — every field here is required:</p>
+<ul>
+<li>Problem description</li>
+<li>Visual inspection done? (Yes/No)</li>
+<li>MTR test (Passed/Failed)</li>
+<li>Cold test (Passed/Failed)</li>
+<li>Wiring (Repaired/Was OK)</li>
+<li>Remark</li>
+</ul>
+<div class="fig">
+  <img src="screenshots/10_servicedesk_checklist_dialog.png" alt="Inspection checklist dialog">
+  <div class="cap">Inspection checklist dialog.</div>
+</div>
+
+<h2>5. Electronics</h2>
+<p>Four tabs: <strong>Pending Decision</strong>, <strong>Completed</strong>, <strong>Sent Back to Warehouse</strong>, and <strong>Scrapped</strong>.</p>
+<div class="fig">
+  <img src="screenshots/11_electronics_home.png" alt="Electronics home page">
+  <div class="cap">Electronics home page.</div>
+</div>
+<h3>Step 1 — Diagnose</h3>
+<p>
+Select a pending item and click <strong>Proceed</strong> to open the full
+diagnostic checklist: your name, initial observation, PCB type, PCB issue,
+category of failure, sub category (you can pick more than one — type to
+search), IGBT pin status, the component actually changed, the test machine
+used, the tested date, and finally a <strong>Final Remark</strong> of
+Repaired OK, Tested OK, or Scrapped. Submitting this moves the item to the
+<strong>Completed</strong> tab.
+</p>
+<div class="fig">
+  <img src="screenshots/12_electronics_diagnostic_dialog.png" alt="Diagnostic checklist dialog">
+  <div class="cap">Diagnostic checklist dialog.</div>
+</div>
+<h3>Step 2 — Dispose</h3>
+<p>
+In the Completed tab, select the item. Depending on what you picked as the
+Final Remark, you'll see either a <strong>Send Back to Warehouse</strong>
+button or a <strong>Scrap</strong> button (only one applies — it's decided
+by the remark you already gave it). Either way, a small dialog asks for the
+outward reservation number.
+</p>
+<div class="fig">
+  <img src="screenshots/13_electronics_reservation_dialog.png" alt="Send Back to Warehouse dialog">
+  <div class="cap">Send Back to Warehouse dialog.</div>
+</div>
+
+<h2>6. Admin</h2>
+<p>
+The Admin Dashboard is a separate area with its own sidebar, reachable only
+by an Admin login. It doesn't act on individual parts — it's for
+oversight, user management, and reporting.
+</p>
+<h3>Dashboard Overview</h3>
+<p>
+Every material in the system, in one place, with a tab per stage across the
+<em>entire</em> pipeline (not just one role's slice of it). Filterable by
+part type, engineer, and date, on top of the usual search and sort.
+</p>
+<div class="fig">
+  <img src="screenshots/14_admin_dashboard_overview.png" alt="Admin Dashboard Overview">
+  <div class="cap">Admin Dashboard Overview.</div>
+</div>
+<h3>User Management</h3>
+<p>See every login, its role, and whether it's active. From here you can:</p>
+<ul>
+<li><strong>+ Add User</strong> — create a new login (name, email, password, role).</li>
+<li><strong>Change Password</strong> / <strong>Change Role</strong> — per-account, via a small dialog.</li>
+<li><strong>Activate / Deactivate</strong> — one click, no dialog.</li>
+</ul>
+<div class="fig">
+  <img src="screenshots/15_admin_user_management.png" alt="User Management page">
+  <div class="cap">User Management page.</div>
+</div>
+<div class="fig">
+  <img src="screenshots/16_admin_add_user_dialog.png" alt="Add User dialog">
+  <div class="cap">Add User dialog.</div>
+</div>
+<h3>Reports &amp; Analytics</h3>
+<p>
+Two at-a-glance charts: how many materials are sitting at each stage right
+now, and which components/faults come up most often (pulled from
+Electronics' own diagnostic notes).
+</p>
+<div class="fig">
+  <img src="screenshots/17_admin_reports.png" alt="Reports and Analytics page">
+  <div class="cap">Reports &amp; Analytics page.</div>
+</div>
+<h3>Material Lookup</h3>
+<p>
+Search by Service ID, machine number, or faulty serial number. Every match
+shows its full history — every stage it has passed through, who touched
+it, and when — from the moment it was first dispatched to wherever it is
+(or ended up) now.
+</p>
+<div class="fig">
+  <img src="screenshots/18_admin_material_lookup.png" alt="Material Lookup results">
+  <div class="cap">Material Lookup results.</div>
+</div>
+
+<div class="footer-note">Service Material Tracker — Internal Documentation</div>
+
+</body>
+</html>

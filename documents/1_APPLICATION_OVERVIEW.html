@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Service Material Tracker — How the App Works</title>
+<style>
+  @page { size: A4; margin: 16mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #1f2937;
+    line-height: 1.55;
+    font-size: 12px;
+  }
+  .cover {
+    background: linear-gradient(135deg, #0b7a44, #0f9d58);
+    color: #fff;
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 26px;
+  }
+  .cover .tag {
+    color: #d7f5e3;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 11px;
+    margin-bottom: 10px;
+  }
+  .cover h1 {
+    font-size: 24px;
+    margin: 0 0 8px;
+    line-height: 1.25;
+    color: #fff;
+  }
+  .cover p.sub {
+    font-size: 12.5px;
+    color: #e3f5e9;
+    max-width: 620px;
+    margin: 0;
+  }
+  h1 { color: #0b7a44; font-size: 22px; border-bottom: 2px solid #0f9d58; padding-bottom: 6px; margin-top: 0; }
+  h2 { color: #0b7a44; font-size: 16px; margin-top: 22px; margin-bottom: 8px; page-break-after: avoid; }
+  h2::before { content: ""; }
+  hr { display: none; }
+  strong { color: #0b7a44; }
+  code, pre { font-family: 'Consolas', monospace; font-size: 11px; }
+  code {
+    background: #eef3f0;
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  pre {
+    background: #12241c;
+    color: #d7ded9;
+    padding: 16px 18px;
+    border-radius: 8px;
+    line-height: 1.5;
+    white-space: pre;
+    page-break-inside: avoid;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 18px;
+    font-size: 11.5px;
+    page-break-inside: avoid;
+  }
+  th, td {
+    border: 1px solid #dfe7e2;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #e3f5e9;
+    color: #0b7a44;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  tr:nth-child(even) td { background: #fafcfb; }
+  ul { padding-left: 20px; margin: 8px 0; }
+  li { margin-bottom: 4px; }
+  p { margin: 6px 0 10px; }
+  blockquote {
+    border-left: 3px solid #0f9d58;
+    margin: 14px 0;
+    padding: 6px 14px;
+    background: #f2f8f4;
+    color: #374151;
+  }
+  .footer-note {
+    margin-top: 40px;
+    padding-top: 12px;
+    border-top: 1px solid #dfe7e2;
+    color: #6b7280;
+    font-size: 10.5px;
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="tag">Internal Documentation</div>
+  <h1>Service Material Tracker<br>How the App Works</h1>
+  <p class="sub">
+    A plain-language explanation of what this application does, how a
+    faulty part flows through it from start to finish, and what every file
+    in the codebase is responsible for.
+  </p>
+</div>
+
+<div class="section">
+<h2>1. What is this application?</h2>
+<p>
+When a field engineer replaces a faulty part (a Power Card, Control Card,
+or a motor/pump) at a farmer's site, that faulty part doesn't just
+disappear — it has to travel through a repair/inspection pipeline before it
+either gets fixed and put back into the spare-parts stock, sent to an
+external repair vendor (OEM), or scrapped.
+</p>
+<p>
+This app is the system that tracks that journey. Every person who touches
+the part — the engineer, the warehouse staff, the service desk, the
+electronics repair technician — logs into their own page, sees only the
+items relevant to them, and records what they did. An admin can see
+everything, across every stage, at once.
+</p>
+<p>
+It's a <strong>Django</strong> web application (Django is a Python
+framework for building websites) backed by a <strong>MySQL</strong>
+database.
+</p>
+</div>
+
+<div class="section">
+<h2>2. The journey of one faulty part (the &ldquo;material flow&rdquo;)</h2>
+<p>
+This is the heart of the whole system. Not every part goes through every
+step — there are a couple of shortcuts — but this is the full path:
+</p>
+<pre> 1. ENGINEER
+    Replaces the faulty part on-site, logs it, and dispatches it
+    (physically ships it) to a Warehouse.
+        │
+        ▼
+ 2. (optional) REGIONAL WAREHOUSE
+    Some parts land at a regional warehouse first. Staff there either
+    deal with it directly (Tested OK / Repaired / send to OEM) or
+    forward it on to the Main Warehouse.
+        │
+        ▼
+ 3. MAIN WAREHOUSE — "Receive"
+    Checks the part in: records the date received and whether the
+    physical serial number matches the paperwork.
+        │
+        ├──► Power/Control Card whose serial starts with "P" or a
+        │    motor/pump: skips straight to step 6 (OEM/Scrap decision) —
+        │    these never go through Service Desk or Electronics.
+        │
+        ▼
+ 4. SERVICE DESK
+    Runs a mandatory inspection checklist (visual check, MTR test, cold
+    test, wiring) and hands the part on to Electronics.
+        │
+        ▼
+ 5. ELECTRONICS
+    Runs a detailed diagnostic (what failed, which component, etc.) and
+    reaches a conclusion: Repaired OK, Tested OK, or Scrapped.
+        │
+        ▼
+ 6. MAIN WAREHOUSE — final disposition
+    Based on the conclusion, the warehouse either:
+      • Adds it back to service stock (repaired/tested-OK parts), or
+      • Dispatches it to an external OEM for repair, or
+      • Scraps it.</pre>
+<p>
+Every single step above is written to a permanent history log, so nobody
+ever loses track of where a part is or where it's been — that's what powers
+the Admin's &ldquo;Material Lookup&rdquo; search (see the User Manual).
+</p>
+</div>
+
+<div class="section">
+<h2>3. Who uses the app (the roles)</h2>
+<p>
+Every login belongs to exactly one <strong>role</strong>, and that role
+decides which page you land on and what you're allowed to do. The roles
+are:
+</p>
+<table>
+<tr><th style="width:22%">Role</th><th>What they do</th></tr>
+<tr><td><strong>Engineer</strong></td><td>Logs and dispatches faulty parts from the field.</td></tr>
+<tr><td><strong>Regional Warehouse</strong></td><td>An optional first stop; can resolve simple items directly or forward them on.</td></tr>
+<tr><td><strong>Warehouse</strong> (Main Warehouse)</td><td>Receives parts, decides where they go next, and closes the loop (add to stock / OEM / scrap).</td></tr>
+<tr><td><strong>Service Desk</strong></td><td>Runs the mandatory inspection checklist before Electronics.</td></tr>
+<tr><td><strong>Electronics</strong></td><td>Diagnoses the fault and reaches a repaired/tested/scrapped conclusion.</td></tr>
+<tr><td><strong>Admin</strong></td><td>Sees and manages everything — users, all materials, reports, and search.</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>4. The Admin Dashboard</h2>
+<p>
+Because no single operational page shows the <em>whole</em> picture,
+there's a separate Admin area with four sections:
+</p>
+<ul>
+<li><strong>Dashboard Overview</strong> — every material in the system, in one table, with a tab for every stage of the pipeline above (Pending, Warehouse, With Service Desk, With Electronics, Dispatched to OEM, Scrapped, Added to Stock, etc.), filterable by part type, engineer, and date.</li>
+<li><strong>User Management</strong> — add new logins, change a password or role, and activate/deactivate accounts.</li>
+<li><strong>Reports &amp; Analytics</strong> — two charts: how many materials are at each stage, and which components/faults come up most often (pulled from Electronics' diagnostic notes).</li>
+<li><strong>Material Lookup</strong> — search by Service ID, machine number, or faulty serial number, and see that part's <em>entire</em> history, from the moment the engineer dispatched it to wherever it is now.</li>
+</ul>
+<blockquote>See the User Manual for step-by-step screenshots of all of this.</blockquote>
+</div>
+
+<h2>5. How the project is organized (file by file)</h2>
+<p>
+Django projects are split into a <strong>project</strong> (the overall
+settings/config) and one or more <strong>apps</strong> (the actual
+features). This project has one app, called <code>tracker</code>, which
+contains everything described above.
+</p>
+
+<h2 style="margin-top:18px;font-size:14px;">Top-level project files</h2>
+<table>
+<tr><th style="width:26%">File/Folder</th><th>What it's for</th></tr>
+<tr><td><code>manage.py</code></td><td>The command-line entry point — used to start the server, apply database changes, etc. Nobody edits this.</td></tr>
+<tr><td><code>requirements.txt</code></td><td>The list of external Python libraries the app depends on (Django itself, the MySQL driver, etc.).</td></tr>
+<tr><td><code>config/settings.py</code></td><td>The app's master configuration: which database to use, which features are turned on, security settings.</td></tr>
+<tr><td><code>config/settings_local.py</code></td><td>The <em>real</em> database passwords/hostnames for this specific machine. Deliberately kept out of source control — every developer/server has their own copy.</td></tr>
+<tr><td><code>config/urls.py</code></td><td>The very top-level web address map (currently just hands everything off to the <code>tracker</code> app).</td></tr>
+<tr><td><code>config/wsgi.py</code></td><td>A technical file that lets a production web server (like gunicorn) talk to the Django app.</td></tr>
+<tr><td><code>Dockerfile</code>, <code>docker-compose.yml</code>, <code>docker/</code></td><td>Packaging so the whole app (and its database) can be run inside Docker containers — used for deployment.</td></tr>
+</table>
+
+<h2 style="margin-top:18px;font-size:14px;">Inside the <code>tracker</code> app</h2>
+<table>
+<tr><th style="width:22%">File</th><th>Plain-language role</th></tr>
+<tr><td><code>models.py</code></td><td><strong>The data.</strong> Defines every &ldquo;thing&rdquo; the app remembers — a User, a Dispatch, a DispatchItem (one physical faulty part) and all the fields it can have (status, which engineer, which reservation numbers, the electronics diagnosis, etc.), plus the append-only history log (<code>DispatchItemStatusEvent</code>) that records every stage a part has passed through.</td></tr>
+<tr><td><code>views.py</code></td><td><strong>The logic.</strong> For every page, this is the code that decides what to show and what happens when someone clicks a button (e.g. &ldquo;Receive&rdquo;, &ldquo;Dispatch to OEM&rdquo;, &ldquo;Add User&rdquo;). Each role's home page and each action button has its own section here.</td></tr>
+<tr><td><code>forms.py</code></td><td><strong>The input rules.</strong> Defines what fields appear in each pop-up form and what counts as valid input.</td></tr>
+<tr><td><code>urls.py</code></td><td><strong>The address book.</strong> Maps each web address (like <code>/main-warehouse/</code>) to the piece of logic in <code>views.py</code> that handles it.</td></tr>
+<tr><td><code>backends.py</code></td><td><strong>The bouncer.</strong> Checks a login attempt's email/password against the right <em>role</em>.</td></tr>
+<tr><td><code>services.py</code></td><td>Shared helper logic used by multiple pages — e.g. &ldquo;get every item currently with the Service Desk.&rdquo;</td></tr>
+<tr><td><code>db_router.py</code></td><td>Sends one particular type of read-only data to a <em>different</em> database server than everything else the app writes.</td></tr>
+<tr><td><code>admin.py</code></td><td>Hooks into Django's own built-in admin site (not the custom Admin Dashboard — not used day-to-day).</td></tr>
+<tr><td><code>apps.py</code> / <code>__init__.py</code></td><td>Boilerplate Django needs. No real content.</td></tr>
+<tr><td><code>tests.py</code></td><td>Placeholder for automated tests (currently empty).</td></tr>
+<tr><td><code>migrations/</code></td><td>A running history of every change ever made to the database's structure.</td></tr>
+</table>
+
+<h2 style="margin-top:18px;font-size:14px;"><code>templates/</code> — the actual pages people see</h2>
+<p>Each <code>.html</code> file here is one page. They're plain HTML with placeholders that <code>views.py</code> fills in with real data.</p>
+<ul>
+<li><code>base.html</code> — the shared header/footer for every operational page.</li>
+<li><code>login.html</code> — the login screen.</li>
+<li><code>engineer_home.html</code>, <code>warehouse_home.html</code>, <code>main_warehouse_home.html</code>, <code>service_desk_home.html</code>, <code>electronics_home.html</code> — one home page per role.</li>
+<li><code>admin_base.html</code> — the shared sidebar/top-bar shell for the Admin Dashboard.</li>
+<li><code>admin_dashboard.html</code>, <code>admin_users.html</code>, <code>admin_reports.html</code>, <code>admin_lookup.html</code> — the four Admin sections.</li>
+</ul>
+
+<h2 style="margin-top:18px;font-size:14px;"><code>static/tracker/</code> — styling and interactivity</h2>
+<ul>
+<li><code>style.css</code> — the shared look for every operational page.</li>
+<li><code>admin.css</code> — the look of the Admin Dashboard specifically.</li>
+<li>One <code>.js</code> file per page family — handles pop-up forms, filtering/sorting, expanding row details, and the searchable dropdown in the Electronics form.</li>
+<li><code>ecozen-logo.png</code>, <code>photovoltaic-2138992_1280.jpg</code> — images used in the header and login background.</li>
+</ul>
+
+<div class="section">
+<h2>6. Where the data actually lives</h2>
+<ul>
+<li><strong>MySQL, database <code>fault_tracker</code></strong> — everything this app itself creates: users, dispatches, and the full status history of every part. This is the database the app can write to.</li>
+<li><strong>A second, external MySQL database (<code>clappia</code>)</strong> — a <em>read-only</em> connection to another team's system, holding the original service-ticket data. The app reads from it but never writes to it — that's why <code>db_router.py</code> exists.</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>7. In one sentence</h2>
+<p>
+A faulty part gets logged by an engineer, physically travels through a
+chain of warehouses and inspection/repair teams (each recording their own
+step), and ends up back in stock, at an outside repair shop, or scrapped —
+and an admin can see and search that entire journey for every part, at any
+time.
+</p>
+</div>
+
+<div class="footer-note">Service Material Tracker — Internal Documentation</div>
+
+</body>
+</html>
