@@ -20,11 +20,13 @@ services:
       CLAPPIA_DB_USER: ${CLAPPIA_DB_USER}
       CLAPPIA_DB_PASSWORD: ${CLAPPIA_DB_PASSWORD}
     ports:
-      # Loopback-only by default -- nginx (or whatever's already fronting
-      # other apps on this host) reverse-proxies to this port; the app is
-      # never exposed directly to the internet. Override WEB_PORT in .env
-      # if 8000 is already taken by another app on the same host.
-      - "127.0.0.1:${WEB_PORT:-8000}:8000"
+      # Loopback-only by default -- for a host where nginx (or whatever's
+      # already fronting other apps) reverse-proxies to this port, so the
+      # app is never exposed directly to the internet. If this deployment
+      # has no reverse proxy and needs direct IP:port access instead, set
+      # BIND_HOST=0.0.0.0 in .env. Override WEB_PORT too if 8000 is already
+      # taken by another app on the same host.
+      - "${BIND_HOST:-127.0.0.1}:${WEB_PORT:-8000}:8000"
     # No depends_on: db -- entrypoint.sh already polls DB_HOST:DB_PORT
     # itself before running migrate, and production points DB_HOST at the
     # real RDS server (see .env.example), not the local-dev-only `db`
