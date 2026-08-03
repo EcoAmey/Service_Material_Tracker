@@ -1,3 +1,5 @@
+name: replacement_tracker
+
 services:
   web:
     build: .
@@ -18,4 +20,34 @@ services:
       CLAPPIA_DB_USER: ${CLAPPIA_DB_USER}
       CLAPPIA_DB_PASSWORD: ${CLAPPIA_DB_PASSWORD}
     ports:
-      - "8000:8000"
+      # Loopback-only by default -- nginx (or whatever's already fronting
+      # other apps on this host) reverse-proxies to this port; the app is
+      # never exposed directly to the internet. Override WEB_PORT in .env
+      # if 8000 is already taken by another app on the same host.
+      - "127.0.0.1:${WEB_PORT:-8000}:8000"
+    # No depends_on: db -- entrypoint.sh already polls DB_HOST:DB_PORT
+    # itself before running migrate, and production points DB_HOST at the
+    # real RDS server (see .env.example), not the local-dev-only `db`
+    # service below, so web must be able to start without it.
+
+  # Local-dev-only stand-in for the app's own database, used when there's
+  # no real DB access (e.g. a laptop without RDS network reachability).
+  # Seeded once (on first container start / empty volume) from the dump
+  # checked into the repo root. Production connects straight to the real
+  # RDS instead (DB_HOST/DB_NAME in .env.example) -- start this with
+  # `docker compose --profile local-db up -d --build`.
+  db:
+    profiles: ['local-db']
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  db_data:
