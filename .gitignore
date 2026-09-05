@@ -8,3 +8,4 @@ staticfiles/
 docker/mysql-init/*.sql
 DEV-backup-*.zip
 *.pem
+frontend/
