@@ -7,3 +7,4 @@ config/settings_local.py
 staticfiles/
 docker/mysql-init/*.sql
 DEV-backup-*.zip
+*.pem

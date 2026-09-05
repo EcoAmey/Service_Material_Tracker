@@ -855,6 +855,20 @@ dialog::backdrop {
   margin: 0 0 16px;
 }
 
+.dialog-help {
+  font-size: 0.85rem;
+  color: var(--color-text-muted, #666);
+  margin: -8px 0 16px;
+  line-height: 1.5;
+}
+
+.dialog-help code {
+  background: var(--color-surface-muted, #f0f0f0);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
 .dialog-actions {
   display: flex;
   gap: 10px;

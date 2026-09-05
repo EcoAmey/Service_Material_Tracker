@@ -312,6 +312,12 @@
   border: none;
 }
 
+.admin-page-header-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 .admin-table-wrapper {
   overflow-x: auto;
   background: var(--color-surface);

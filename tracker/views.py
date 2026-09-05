@@ -11,6 +11,7 @@ from django.views.generic import TemplateView
 
 from .forms import (
     AddToStockForm,
+    BulkCreateUsersForm,
     CardOemDispatchForm,
     CardScrapForm,
     ChangePasswordForm,
@@ -114,7 +115,7 @@ class AdminUserActionView(AdminRequiredMixin, View):
     """Handles the admin acting on one user account at a time -- creating
     a new one, or changing an existing one's password/role/active status."""
 
-    ACTIONS = {'create', 'change_password', 'change_role', 'activate', 'deactivate'}
+    ACTIONS = {'create', 'bulk_create', 'change_password', 'change_role', 'activate', 'deactivate'}
 
     def post(self, request, *args, **kwargs):
         action = request.POST.get('action')
@@ -136,6 +137,36 @@ class AdminUserActionView(AdminRequiredMixin, View):
                 role=data['role'], status='active',
             )
             messages.success(request, f"Created user {data['email']}.")
+            return redirect('tracker:admin_users')
+
+        if action == 'bulk_create':
+            form = BulkCreateUsersForm(request.POST)
+            if not form.is_valid():
+                messages.error(request, 'Please paste at least one user row.')
+                return redirect('tracker:admin_users')
+            parsed_rows, errors = form.parse_rows()
+
+            # Case-insensitive dupe check against both the DB and other rows
+            # in this same paste, so two identical rows in one paste don't
+            # both silently succeed.
+            existing_emails = {e.lower() for e in User.objects.values_list('email', flat=True)}
+            seen_in_paste = set()
+            created = []
+            for line_no, name, email, password, role in parsed_rows:
+                email_key = email.lower()
+                if email_key in existing_emails or email_key in seen_in_paste:
+                    errors.append(f'Line {line_no}: a user with email {email} already exists.')
+                    continue
+                seen_in_paste.add(email_key)
+                created.append(User(name=name, email=email, password=password, role=role, status='active'))
+
+            if created:
+                User.objects.bulk_create(created)
+                messages.success(request, f'Created {len(created)} user(s).')
+            if errors:
+                messages.error(request, f'{len(errors)} row(s) skipped: ' + ' | '.join(errors))
+            if not created and not errors:
+                messages.error(request, 'No user rows found in the pasted text.')
             return redirect('tracker:admin_users')
 
         target_id = request.POST.get('target_user_id')

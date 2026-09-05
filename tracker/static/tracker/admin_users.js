@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', function () {
   const addUserBtn = document.getElementById('add-user-btn');
   const createUserDialog = document.getElementById('create-user-dialog');
+  const bulkAddUsersBtn = document.getElementById('bulk-add-users-btn');
+  const bulkAddUsersDialog = document.getElementById('bulk-add-users-dialog');
   const changePasswordDialog = document.getElementById('change-password-dialog');
   const changeRoleDialog = document.getElementById('change-role-dialog');
 
@@ -8,6 +10,13 @@ document.addEventListener('DOMContentLoaded', function () {
     addUserBtn.addEventListener('click', function () {
       createUserDialog.querySelectorAll('input[type="text"], input[type="email"]').forEach((el) => (el.value = ''));
       createUserDialog.showModal();
+    });
+  }
+
+  if (bulkAddUsersBtn && bulkAddUsersDialog) {
+    bulkAddUsersBtn.addEventListener('click', function () {
+      bulkAddUsersDialog.querySelector('textarea').value = '';
+      bulkAddUsersDialog.showModal();
     });
   }
 

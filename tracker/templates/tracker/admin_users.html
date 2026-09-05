@@ -9,7 +9,10 @@
             <h1 class="admin-page-title">User Management</h1>
             <p class="admin-page-subtitle">Active logins, roles, and access.</p>
         </div>
-        <button type="button" class="btn-login" id="add-user-btn">+ Add User</button>
+        <div class="admin-page-header-actions">
+            <button type="button" class="btn-login" id="add-user-btn">+ Add User</button>
+            <button type="button" class="btn-login" id="bulk-add-users-btn">+ Bulk Add Users</button>
+        </div>
     </div>
 
     <div class="admin-table-wrapper">
@@ -82,6 +85,28 @@
                 <div class="dialog-actions">
                     <button type="button" class="btn-cancel" data-close="create-user-dialog">Cancel</button>
                     <button type="submit" class="btn-submit">Create</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <dialog id="bulk-add-users-dialog">
+        <div class="dialog-content">
+            <h2>Bulk Add Users</h2>
+            <p class="dialog-help">
+                One user per line: <code>name,email,password,role</code><br>
+                Valid roles: {% for value, label in role_choices %}<code>{{ value }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
+            </p>
+            <form method="post" action="{% url 'tracker:admin_users_action' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="bulk_create">
+                <div class="field">
+                    <label for="id_bulk_rows">Users</label>
+                    <textarea name="rows" id="id_bulk_rows" rows="8" placeholder="Jane Doe,jane@example.com,pass123,engineer&#10;John Smith,john@example.com,pass456,warehouse" required></textarea>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" class="btn-cancel" data-close="bulk-add-users-dialog">Cancel</button>
+                    <button type="submit" class="btn-submit">Create Users</button>
                 </div>
             </form>
         </div>

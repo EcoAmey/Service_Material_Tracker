@@ -508,6 +508,40 @@ class CreateUserForm(forms.Form):
     role = forms.ChoiceField(choices=User.ROLE_CHOICES)
 
 
+class BulkCreateUsersForm(forms.Form):
+    """Admin creating many logins at once -- one 'name,email,password,role'
+    line per user, pasted into a single textarea. Each line is validated
+    independently so one bad row doesn't block the rest (see
+    AdminUserActionView's 'bulk_create' handling)."""
+
+    rows = forms.CharField(widget=forms.Textarea)
+
+    def parse_rows(self):
+        """Splits the pasted text into (line_no, name, email, password, role)
+        tuples, or records a parse error for lines that don't have exactly
+        4 comma-separated fields. Role/email validity is checked later by
+        the caller, against live DB state (existing emails)."""
+        parsed, errors = [], []
+        for line_no, raw_line in enumerate(self.cleaned_data['rows'].splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            fields = [field.strip() for field in line.split(',')]
+            if len(fields) != 4:
+                errors.append(f'Line {line_no}: expected "name,email,password,role", got {len(fields)} field(s).')
+                continue
+            name, email, password, role = fields
+            if not all([name, email, password, role]):
+                errors.append(f'Line {line_no}: all four fields are required.')
+                continue
+            valid_roles = dict(User.ROLE_CHOICES)
+            if role not in valid_roles:
+                errors.append(f'Line {line_no}: unknown role "{role}".')
+                continue
+            parsed.append((line_no, name, email, password, role))
+        return parsed, errors
+
+
 class ChangePasswordForm(forms.Form):
     new_password = forms.CharField(max_length=255, label='New password')
 
