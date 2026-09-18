@@ -1,3 +1,4 @@
+from collections import namedtuple
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -9,16 +10,18 @@ from .models import ClappiaData, DispatchItem, DispatchItemStatusEvent, User
 # and are excluded too.
 DATA_CUTOFF_DATE = date(2026, 7, 19)
 
-# (part_type key, faulty-serial column, display label, name source)
+# (part_type key, faulty-serial column, display label, name source, problem source)
 # name source is None for Power Card / Control Card, which have no
-# ticket-provided name of their own -- the label is used as-is. Generic
-# "material" slots (up to 3 per visit) each have their own component field.
+# ticket-provided name of their own -- the label is used as-is. Both share
+# one fault reason field (controller_display_fault) rather than having a
+# problem field each. Generic "material" slots (up to 3 per visit) each have
+# their own component and problem field.
 PART_TYPES = [
-    ('power_card', 'faulty_power_card_no', 'Power Card', None),
-    ('control_card', 'faulty_control_card_no', 'Control Card', None),
-    ('material', 'faulty_part_no_1', 'Material', 'component_1'),
-    ('material', 'faulty_part_no_2', 'Material', 'component_2'),
-    ('material', 'faulty_part_no_3', 'Material', 'component_3'),
+    ('power_card', 'faulty_power_card_no', 'Power Card', None, 'controller_display_fault'),
+    ('control_card', 'faulty_control_card_no', 'Control Card', None, 'controller_display_fault'),
+    ('material', 'faulty_part_no_1', 'Material', 'component_1', 'problem_1'),
+    ('material', 'faulty_part_no_2', 'Material', 'component_2', 'problem_2'),
+    ('material', 'faulty_part_no_3', 'Material', 'component_3', 'problem_3'),
 ]
 
 # Generic "material" entries whose name suggests a motor or pump follow a
@@ -29,6 +32,11 @@ MOTOR_PUMP_KEYWORDS = ('motor', 'pump')
 # "not applicable" in these free-text fields -- e.g. an unused replacement
 # slot's component/faulty-part columns.
 BLANK_SENTINELS = {'', '-1'}
+
+DispatchMeta = namedtuple(
+    'DispatchMeta',
+    'dispatched_at partner_name destination_name pickup_number lr_number delivery_challan_number',
+)
 
 
 def _clean(value):
@@ -43,6 +51,18 @@ def is_motor_or_pump(part_type, material_name):
         return False
     name = (material_name or '').lower()
     return any(keyword in name for keyword in MOTOR_PUMP_KEYWORDS)
+
+
+def motor_pump_type(material_name):
+    """'motor', 'submersible_pump' or 'surface_pump' -- decides which OEM
+    name list applies, and whether Head/Inch size are asked for at all
+    (not for a bare motor). Only meaningful when is_motor_or_pump is True."""
+    name = (material_name or '').lower()
+    if 'motor' in name:
+        return 'motor'
+    if 'submersible' in name:
+        return 'submersible_pump'
+    return 'surface_pump'
 
 
 @dataclass
@@ -61,10 +81,23 @@ class MaterialLine:
     service_person_name: str
     replacement_date: datetime
     is_dispatched: bool
+    slot: str
+    problem: str
+    dispatch_date: datetime
+    delivery_partner_name: str
+    destination_name: str
+    pickup_number: str
+    lr_number: str
+    delivery_challan_number: str
 
     @property
     def key(self):
-        return f'{self.service_id}|{self.part_type}|{self.faulty_serial}'
+        # slot (the source column, e.g. faulty_part_no_2) rather than
+        # part_type disambiguates two generic "material" slots on the same
+        # visit that happen to share a faulty_serial (e.g. a motor and a
+        # pump both logged with the same placeholder serial) -- without it
+        # they'd collide and one would silently vanish from selection.
+        return f'{self.service_id}|{self.slot}|{self.faulty_serial}'
 
 
 def get_material_lines_for_engineer(email=None):
@@ -88,9 +121,14 @@ def get_material_lines_for_engineer(email=None):
         registered_emails = {
             e.lower() for e in User.objects.filter(role='engineer', status='active').values_list('email', flat=True)
         }
-    dispatched_keys = set(
-        DispatchItem.objects.values_list('service_id', 'part_type', 'faulty_serial')
-    )
+    dispatch_info = {
+        (service_id, part_type, faulty_serial): DispatchMeta(*rest)
+        for service_id, part_type, faulty_serial, *rest in DispatchItem.objects.values_list(
+            'service_id', 'part_type', 'faulty_serial',
+            'dispatch__dispatched_at', 'dispatch__delivery_partner__name', 'dispatch__destination__name',
+            'dispatch__pickup_number', 'dispatch__lr_number', 'dispatch__delivery_challan_number',
+        )
+    }
 
     # clappia_data can contain duplicate rows for the same service_id;
     # keep only the most recent row per (service_id, part_type, faulty_serial)
@@ -101,15 +139,20 @@ def get_material_lines_for_engineer(email=None):
         if registered_emails is not None and (ticket.engineer_email or '').lower() not in registered_emails:
             continue
         replacement_date = datetime.combine(ticket.complaint_reg_date, datetime.min.time())
-        for part_type, faulty_field, label, name_field in PART_TYPES:
+        for part_type, faulty_field, label, name_field, problem_field in PART_TYPES:
             faulty_serial = _clean(getattr(ticket, faulty_field))
             if not faulty_serial:
                 continue
-            key = (ticket.service_id, part_type, faulty_serial)
+            # Keyed on slot (faulty_field), not just part_type: two generic
+            # "material" slots on the same visit (e.g. motor + pump) can
+            # share a faulty_serial -- see MaterialLine.key.
+            key = (ticket.service_id, faulty_field, faulty_serial)
             existing = lines_by_key.get(key)
             if existing is not None and existing.replacement_date >= replacement_date:
                 continue
             material_name = label if name_field is None else (_clean(getattr(ticket, name_field)) or label)
+            problem = None if problem_field is None else _clean(getattr(ticket, problem_field))
+            dispatch_meta = dispatch_info.get((ticket.service_id, part_type, faulty_serial))
             lines_by_key[key] = MaterialLine(
                 service_id=ticket.service_id,
                 part_type=part_type,
@@ -122,7 +165,15 @@ def get_material_lines_for_engineer(email=None):
                 location=ticket.location,
                 service_person_name=ticket.engineer_name,
                 replacement_date=replacement_date,
-                is_dispatched=key in dispatched_keys,
+                is_dispatched=dispatch_meta is not None,
+                slot=faulty_field,
+                problem=problem,
+                dispatch_date=dispatch_meta.dispatched_at if dispatch_meta else None,
+                delivery_partner_name=dispatch_meta.partner_name if dispatch_meta else None,
+                destination_name=dispatch_meta.destination_name if dispatch_meta else None,
+                pickup_number=dispatch_meta.pickup_number if dispatch_meta else None,
+                lr_number=dispatch_meta.lr_number if dispatch_meta else None,
+                delivery_challan_number=dispatch_meta.delivery_challan_number if dispatch_meta else None,
             )
 
     lines = list(lines_by_key.values())

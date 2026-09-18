@@ -66,8 +66,9 @@
                             <div class="col" data-label="Material">
                                 <span class="material-name">{{ item.material_name }}</span>
                                 <span class="part-type">{{ item.get_part_type_display }}</span>
+                                {% if item.problem %}<span class="fault-tag">{{ item.problem }}</span>{% endif %}
                             </div>
-                            <div class="col" data-label="Faulty S/N">{{ item.faulty_serial }}</div>
+                            <div class="col" data-label="Faulty S/N">{% if item.serial_was_corrected %}<span class="corrected-serial" title="Ticket reported {{ item.faulty_serial }}">{{ item.display_faulty_serial }}</span>{% else %}{{ item.faulty_serial }}{% endif %}</div>
                             <div class="col" data-label="Assigned to SD">{{ item.assigned_to_service_desk_at|date:"d M Y" }}</div>
                             <div class="col" data-label="Status">
                                 <span class="status-badge {% if item.is_pending_for_service_desk %}pending{% else %}dispatched{% endif %}">{{ item.get_status_display }}</span>
@@ -75,6 +76,10 @@
                             <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
                         </div>
                         <div class="row-details" hidden>
+                            <div class="field-pair"><dt>Dispatch Date</dt><dd>{{ item.effective_dispatch.dispatched_at|date:"d M Y" }}</dd></div>
+                            <div class="field-pair"><dt>Delivery Partner</dt><dd>{{ item.effective_dispatch.delivery_partner.name }}</dd></div>
+                            <div class="field-pair"><dt>Destination</dt><dd>{{ item.effective_dispatch.destination.name }}</dd></div>
+                            <div class="field-pair"><dt>Pickup No.</dt><dd>{{ item.effective_dispatch.pickup_number }}</dd></div>
                             <div class="field-pair"><dt>LR No.</dt><dd>{{ item.effective_dispatch.lr_number }}</dd></div>
                             <div class="field-pair"><dt>Challan No.</dt><dd>{{ item.effective_dispatch.delivery_challan_number }}</dd></div>
                             <div class="field-pair"><dt>SI Details</dt><dd>{{ item.si_details }}</dd></div>
@@ -85,6 +90,10 @@
                             {% if item.received_date %}
                                 <div class="field-pair"><dt>Received On</dt><dd>{{ item.received_date|date:"d M Y" }}</dd></div>
                                 <div class="field-pair"><dt>Serial Match</dt><dd>{% if item.received_serial_matches %}Yes{% else %}No{% endif %}</dd></div>
+                                {% if item.received_serial_no %}
+                                    <div class="field-pair"><dt>Ticket Faulty S/N</dt><dd>{{ item.faulty_serial }}</dd></div>
+                                    <div class="field-pair"><dt>Received S/N</dt><dd>{{ item.received_serial_no }}</dd></div>
+                                {% endif %}
                             {% endif %}
                             {% if not item.is_pending_for_service_desk %}
                                 <div class="field-pair"><dt>Problem</dt><dd>{{ item.inspection_problem }}</dd></div>

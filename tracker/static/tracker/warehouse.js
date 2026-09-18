@@ -5,6 +5,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const testedOkBtn = document.getElementById('tested-ok-btn');
   const repairBtn = document.getElementById('repair-btn');
   const oemBtn = document.getElementById('oem-btn');
+  const scrapBtn = document.getElementById('scrap-btn');
+  const receiveBtn = document.getElementById('receive-btn');
+  const receiveMotorBtn = document.getElementById('receive-motor-btn');
   const mismatchWarning = document.getElementById('mismatch-warning');
   const hiddenFieldsContainer = document.getElementById('selected-items-fields');
   const actionField = document.getElementById('action-field');
@@ -23,18 +26,55 @@ document.addEventListener('DOMContentLoaded', function () {
   const remarksCancel = document.getElementById('remarks-cancel');
   const forwardDialog = document.getElementById('forward-dialog');
   const forwardCancel = document.getElementById('forward-cancel');
+  const receiveMotorDialog = document.getElementById('receive-motor-dialog');
+  const receiveMotorCancel = document.getElementById('receive-motor-cancel');
+  const receiveDialog = document.getElementById('receive-dialog');
+  const receiveCancel = document.getElementById('receive-cancel');
+  const receivedSerialNoField = document.getElementById('received-serial-no-field');
+  const receivedSerialNoInput = document.getElementById('id_received_serial_no');
+  const serialMatchesYes = document.getElementById('id_serial_matches_yes');
+  const serialMatchesNo = document.getElementById('id_serial_matches_no');
+  const receiveRemarksInput = document.getElementById('id_receive_remarks');
+  const motorOemSelect = document.getElementById('id_motor_oem_name');
+  const motorHeadSizeField = document.getElementById('motor-head-size-field');
+  const motorHeadSizeSelect = document.getElementById('id_motor_head_size');
+  const motorInchSizeField = document.getElementById('motor-inch-size-field');
+  const motorInchSizeSelect = document.getElementById('id_motor_inch_size');
+
+  // OEM name list depends on the selected item's pump type -- see
+  // DispatchItem.motor_pump_type and the two json_script blocks at the
+  // bottom of the page.
+  function readJsonScript(id) {
+    const el = document.getElementById(id);
+    return el ? JSON.parse(el.textContent) : [];
+  }
+  const motorSurfaceOemChoices = readJsonScript('motor-surface-oem-choices');
+  const submersibleOemChoices = readJsonScript('submersible-oem-choices');
 
   const fwdPartnerSelect = document.getElementById('id_fwd_delivery_partner');
   const fwdCustomPartnerField = document.getElementById('fwd-custom-partner-field');
 
-  // Both dialogs' fields are attached to the same <form> via form="action-form",
-  // so a required field in the closed dialog would silently block submission
-  // of the other one. Toggle `required` based on which dialog is actually open.
+  // Every dialog's fields are attached to the same <form> via form="action-form",
+  // so a required field in a closed dialog would silently block submission
+  // of the one actually open. Toggle `required` based on which is open.
+  // Pickup/LR/challan aren't in this list -- like the engineer's own
+  // dispatch form, they're only required unless By Hand is picked, which
+  // WarehouseActionView checks server-side (see fwdCourierOnlyFields below).
   const forwardRequiredFields = [
-    document.getElementById('id_fwd_pickup_number'),
-    document.getElementById('id_fwd_lr_number'),
-    document.getElementById('id_fwd_delivery_challan_number'),
     document.getElementById('id_fwd_destination'),
+  ];
+  // Head/Inch size are required separately in openReceiveMotorDialog --
+  // only for Surface/Submersible Pump, not for a bare Motor.
+  const receiveMotorRequiredFields = [
+    document.getElementById('id_motor_received_date'),
+    document.getElementById('id_motor_capacity'),
+    document.getElementById('id_motor_oem_name'),
+  ];
+  const receiveRequiredFields = [
+    document.getElementById('id_received_date'),
+    document.getElementById('id_reservation_no'),
+    document.getElementById('id_serial_matches_yes'),
+    document.getElementById('id_serial_matches_no'),
   ];
 
   function setForwardFieldsRequired(isRequired) {
@@ -42,6 +82,34 @@ document.addEventListener('DOMContentLoaded', function () {
       if (field) field.required = isRequired;
     });
   }
+
+  function setReceiveMotorFieldsRequired(isRequired) {
+    receiveMotorRequiredFields.forEach((field) => {
+      if (field) field.required = isRequired;
+    });
+    // Head/Inch size only apply to Surface/Submersible Pump, not a bare
+    // Motor -- always reset here; openReceiveMotorDialog sets them true
+    // afterward when the selected item's type needs them.
+    if (motorHeadSizeSelect) motorHeadSizeSelect.required = false;
+    if (motorInchSizeSelect) motorInchSizeSelect.required = false;
+  }
+
+  function setReceiveFieldsRequired(isRequired) {
+    receiveRequiredFields.forEach((field) => {
+      if (field) field.required = isRequired;
+    });
+  }
+
+  // Mirrors main_warehouse.js's identical receive dialog behavior.
+  function updateSerialNoVisibility() {
+    const mismatched = !!(serialMatchesNo && serialMatchesNo.checked);
+    if (receivedSerialNoField) receivedSerialNoField.hidden = !mismatched;
+    if (receivedSerialNoInput) receivedSerialNoInput.required = mismatched;
+    if (receiveRemarksInput) receiveRemarksInput.required = mismatched;
+  }
+
+  if (serialMatchesYes) serialMatchesYes.addEventListener('change', updateSerialNoVisibility);
+  if (serialMatchesNo) serialMatchesNo.addEventListener('change', updateSerialNoVisibility);
 
   setForwardFieldsRequired(false);
 
@@ -60,7 +128,7 @@ document.addEventListener('DOMContentLoaded', function () {
       row.classList.toggle('selected', !!(cb && cb.checked));
     });
 
-    [forwardBtn, testedOkBtn, repairBtn, oemBtn].forEach((btn) => {
+    [forwardBtn, testedOkBtn, repairBtn, oemBtn, scrapBtn, receiveBtn, receiveMotorBtn].forEach((btn) => {
       btn.hidden = true;
       btn.disabled = true;
     });
@@ -77,6 +145,25 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const category = selected[0].dataset.category;
+    if (category === 'motor_pump_pending_receive') {
+      // Motor / Surface Pump / Submersible Pump each need a different OEM
+      // list, and only Surface/Submersible ask for Head/Inch size -- mixing
+      // types in one receive would apply one item's answers to all of them.
+      const motorTypes = new Set(selected.map((cb) => cb.dataset.motorType));
+      if (motorTypes.size > 1) {
+        mismatchWarning.hidden = false;
+        return;
+      }
+      receiveMotorBtn.hidden = false;
+      receiveMotorBtn.disabled = false;
+      return;
+    }
+    if (category === 'card_pending_receive') {
+      receiveBtn.hidden = false;
+      receiveBtn.disabled = false;
+      return;
+    }
+
     forwardBtn.hidden = false;
     forwardBtn.disabled = false;
     if (category === 'card') {
@@ -84,11 +171,13 @@ document.addEventListener('DOMContentLoaded', function () {
       testedOkBtn.hidden = false;
       testedOkBtn.disabled = false;
     } else {
-      forwardBtn.textContent = 'Dispatch to Warehouse';
+      forwardBtn.textContent = 'Service Center';
       repairBtn.hidden = false;
       repairBtn.disabled = false;
       oemBtn.hidden = false;
       oemBtn.disabled = false;
+      scrapBtn.hidden = false;
+      scrapBtn.disabled = false;
     }
   }
 
@@ -147,11 +236,63 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function openRemarksDialog(action, title) {
     setForwardFieldsRequired(false);
+    setReceiveMotorFieldsRequired(false);
+    setReceiveFieldsRequired(false);
     actionField.value = action;
     remarksDialogTitle.textContent = title;
     document.getElementById('id_simple_remarks').value = '';
     populateSelectedFields();
     remarksDialog.showModal();
+  }
+
+  function populateOemOptions(choices) {
+    motorOemSelect.innerHTML = '<option value="">— Select —</option>';
+    choices.forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      motorOemSelect.appendChild(option);
+    });
+  }
+
+  function openReceiveMotorDialog() {
+    setForwardFieldsRequired(false);
+    setReceiveFieldsRequired(false);
+    setReceiveMotorFieldsRequired(true);
+    const selected = getSelected();
+    const type = selected.length ? selected[0].dataset.motorType : '';
+    const isMotor = type === 'motor';
+    populateOemOptions(type === 'submersible_pump' ? submersibleOemChoices : motorSurfaceOemChoices);
+    // Head/Inch size don't apply to a bare Motor -- only Surface/Submersible Pump.
+    motorHeadSizeField.hidden = isMotor;
+    motorInchSizeField.hidden = isMotor;
+    motorHeadSizeSelect.required = !isMotor;
+    motorInchSizeSelect.required = !isMotor;
+    actionField.value = 'receive_motor';
+    document.getElementById('id_motor_received_date').value = '';
+    document.getElementById('id_motor_capacity').value = '';
+    motorOemSelect.value = '';
+    motorHeadSizeSelect.value = '';
+    motorInchSizeSelect.value = '';
+    document.getElementById('id_motor_receive_remarks').value = '';
+    populateSelectedFields();
+    receiveMotorDialog.showModal();
+  }
+
+  function openReceiveDialog() {
+    setForwardFieldsRequired(false);
+    setReceiveMotorFieldsRequired(false);
+    setReceiveFieldsRequired(true);
+    actionField.value = 'receive';
+    document.getElementById('id_received_date').value = '';
+    serialMatchesYes.checked = false;
+    serialMatchesNo.checked = false;
+    document.getElementById('id_received_serial_no').value = '';
+    document.getElementById('id_reservation_no').value = '';
+    document.getElementById('id_receive_remarks').value = '';
+    updateSerialNoVisibility();
+    populateSelectedFields();
+    receiveDialog.showModal();
   }
 
   if (testedOkBtn) {
@@ -169,12 +310,38 @@ document.addEventListener('DOMContentLoaded', function () {
       openRemarksDialog('dispatched_to_oem', 'Dispatch to OEM');
     });
   }
+  if (scrapBtn) {
+    scrapBtn.addEventListener('click', function () {
+      openRemarksDialog('scrapped', 'Scrap');
+    });
+  }
+  if (receiveMotorBtn) {
+    receiveMotorBtn.addEventListener('click', openReceiveMotorDialog);
+  }
+  if (receiveBtn) {
+    receiveBtn.addEventListener('click', openReceiveDialog);
+  }
   if (forwardBtn) {
     forwardBtn.addEventListener('click', function () {
       setForwardFieldsRequired(true);
+      setReceiveMotorFieldsRequired(false);
+      setReceiveFieldsRequired(false);
       actionField.value = 'dispatch_forward';
       populateSelectedFields();
       forwardDialog.showModal();
+    });
+  }
+
+  if (receiveMotorCancel) {
+    receiveMotorCancel.addEventListener('click', function () {
+      setReceiveMotorFieldsRequired(false);
+      receiveMotorDialog.close();
+    });
+  }
+  if (receiveCancel) {
+    receiveCancel.addEventListener('click', function () {
+      setReceiveFieldsRequired(false);
+      receiveDialog.close();
     });
   }
 
@@ -247,6 +414,15 @@ document.addEventListener('DOMContentLoaded', function () {
   applyFilters();
   applySort();
 
+  // Mirrors dispatch.js's identical By Hand behavior on the engineer's own
+  // dispatch form -- hides (and clears) the courier-only fields, since a
+  // By Hand dispatch has no pickup/LR/challan number.
+  const fwdCourierOnlyFields = [
+    document.getElementById('fwd-field-pickup-number'),
+    document.getElementById('fwd-field-lr-number'),
+    document.getElementById('fwd-field-delivery-challan-number'),
+  ];
+
   if (fwdPartnerSelect && fwdCustomPartnerField) {
     fwdPartnerSelect.addEventListener('change', function () {
       const isOther = fwdPartnerSelect.value === 'other';
@@ -254,6 +430,13 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!isOther) {
         document.getElementById('id_fwd_custom_delivery_partner').value = '';
       }
+
+      const isByHand = fwdPartnerSelect.value === 'by_hand';
+      fwdCourierOnlyFields.forEach((field) => {
+        if (!field) return;
+        field.hidden = isByHand;
+        if (isByHand) field.querySelector('input').value = '';
+      });
     });
   }
 });

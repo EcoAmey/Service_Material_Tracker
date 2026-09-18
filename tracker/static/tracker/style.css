@@ -136,7 +136,9 @@ body:has(.auth-page) {
 
 .auth-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 10px;
 }
 
 .btn-login {
@@ -355,6 +357,19 @@ body:has(.auth-page) {
 
 .app-header form {
   flex-shrink: 0;
+}
+
+.app-version {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Login card has a white/light background, unlike the dark header bars
+   the default (light-on-dark) color above is meant for. */
+.app-version-muted {
+  color: var(--color-text-muted);
 }
 
 .link-btn {
@@ -603,6 +618,23 @@ body:has(.auth-page) {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   display: block;
+}
+
+.row-main .fault-tag {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: var(--color-pending);
+  background: var(--color-pending-bg);
+}
+
+/* A serial the warehouse's receive checklist corrected (received_serial_no)
+   -- faulty_serial itself is untouched, see DispatchItem.display_faulty_serial. */
+.corrected-serial {
+  color: var(--color-selected-border);
+  font-weight: 700;
 }
 
 .expand-toggle {

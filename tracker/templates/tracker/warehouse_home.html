@@ -32,6 +32,7 @@
 
         <div class="tabs">
             <button type="button" class="tab-btn active" data-tab="dispatched">Incoming</button>
+            <button type="button" class="tab-btn" data-tab="received">Received</button>
             <button type="button" class="tab-btn" data-tab="tested_ok">Tested OK</button>
             <button type="button" class="tab-btn" data-tab="repaired">Repaired</button>
             <button type="button" class="tab-btn" data-tab="dispatched_to_oem">Dispatched to OEM</button>
@@ -60,7 +61,7 @@
 
                     {% for item in incoming_items %}
                         <div class="table-row"
-                             data-status="{{ item.status }}"
+                             data-status="{% if item.is_received_awaiting_disposition %}received{% else %}{{ item.status }}{% endif %}"
                              data-category="{% if item.is_motor_or_pump %}motor_pump{% else %}card{% endif %}"
                              data-part-type="{{ item.part_type }}"
                              data-date="{{ item.dispatch.dispatched_at|date:'U' }}"
@@ -68,7 +69,15 @@
                             <div class="row-main">
                                 <div class="col-check">
                                     {% if item.status == 'dispatched' %}
-                                        <input type="checkbox" class="material-select" value="{{ item.pk }}" data-category="{% if item.is_motor_or_pump %}motor_pump{% else %}card{% endif %}">
+                                        {% if item.is_pending_motor_receive %}
+                                            <input type="checkbox" class="material-select" value="{{ item.pk }}" data-category="motor_pump_pending_receive" data-motor-type="{{ item.motor_pump_type }}">
+                                        {% elif item.is_motor_or_pump %}
+                                            <input type="checkbox" class="material-select" value="{{ item.pk }}" data-category="motor_pump">
+                                        {% elif item.is_pending_card_receive %}
+                                            <input type="checkbox" class="material-select" value="{{ item.pk }}" data-category="card_pending_receive">
+                                        {% else %}
+                                            <input type="checkbox" class="material-select" value="{{ item.pk }}" data-category="card">
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                                 <div class="col" data-label="Service ID">{{ item.service_id }}</div>
@@ -76,12 +85,17 @@
                                 <div class="col" data-label="Material">
                                     <span class="material-name">{{ item.material_name }}</span>
                                     <span class="part-type">{{ item.get_part_type_display }}</span>
+                                    {% if item.problem %}<span class="fault-tag">{{ item.problem }}</span>{% endif %}
                                 </div>
-                                <div class="col" data-label="Faulty S/N">{{ item.faulty_serial }}</div>
+                                <div class="col" data-label="Faulty S/N">{% if item.serial_was_corrected %}<span class="corrected-serial" title="Ticket reported {{ item.faulty_serial }}">{{ item.display_faulty_serial }}</span>{% else %}{{ item.faulty_serial }}{% endif %}</div>
                                 <div class="col" data-label="LR No.">{{ item.dispatch.lr_number }}</div>
                                 <div class="col" data-label="Challan No.">{{ item.dispatch.delivery_challan_number }}</div>
                                 <div class="col" data-label="Status">
-                                    <span class="status-badge {% if item.status == 'dispatched' %}pending{% else %}dispatched{% endif %}">{{ item.get_status_display }}</span>
+                                    {% if item.is_received_awaiting_disposition %}
+                                        <span class="status-badge pending">Received</span>
+                                    {% else %}
+                                        <span class="status-badge {% if item.status == 'dispatched' %}pending{% else %}dispatched{% endif %}">{{ item.get_status_display }}</span>
+                                    {% endif %}
                                 </div>
                                 <div class="col" data-label="Dispatched On">{{ item.dispatch.dispatched_at|date:"d M Y" }}</div>
                                 <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
@@ -99,8 +113,26 @@
                                 {% endif %}
                                 <div class="field-pair"><dt>Pickup No.</dt><dd>{{ item.dispatch.pickup_number }}</dd></div>
                                 <div class="field-pair"><dt>Delivery Partner</dt><dd>{{ item.dispatch.delivery_partner.name }}</dd></div>
+                                <div class="field-pair"><dt>LR No.</dt><dd>{{ item.dispatch.lr_number }}</dd></div>
+                                <div class="field-pair"><dt>Challan No.</dt><dd>{{ item.dispatch.delivery_challan_number }}</dd></div>
                                 {% if item.dispatch.remarks %}
                                     <div class="field-pair"><dt>Remarks</dt><dd>{{ item.dispatch.remarks }}</dd></div>
+                                {% endif %}
+                                {% if item.received_date and item.is_motor_or_pump %}
+                                    <div class="field-pair"><dt>Received On</dt><dd>{{ item.received_date|date:"d M Y" }}</dd></div>
+                                    <div class="field-pair"><dt>Capacity</dt><dd>{{ item.motor_capacity }}</dd></div>
+                                    <div class="field-pair"><dt>Head Size</dt><dd>{{ item.motor_head_size }}</dd></div>
+                                    <div class="field-pair"><dt>Inch Size</dt><dd>{{ item.motor_inch_size }}</dd></div>
+                                    <div class="field-pair"><dt>OEM Name</dt><dd>{{ item.motor_oem_name }}</dd></div>
+                                    <div class="field-pair"><dt>Fault</dt><dd>{{ item.motor_fault }}</dd></div>
+                                {% elif item.received_date %}
+                                    <div class="field-pair"><dt>Received On</dt><dd>{{ item.received_date|date:"d M Y" }}</dd></div>
+                                    <div class="field-pair"><dt>Serial Match</dt><dd>{% if item.received_serial_matches %}Yes{% else %}No{% endif %}</dd></div>
+                                    {% if item.received_serial_no %}
+                                        <div class="field-pair"><dt>Ticket Faulty S/N</dt><dd>{{ item.faulty_serial }}</dd></div>
+                                        <div class="field-pair"><dt>Received S/N</dt><dd>{{ item.received_serial_no }}</dd></div>
+                                    {% endif %}
+                                    <div class="field-pair"><dt>Reservation No.</dt><dd>{{ item.warehouse_reservation_no }}</dd></div>
                                 {% endif %}
                                 {% if item.status != 'dispatched' %}
                                     <div class="field-pair"><dt>Action Remarks</dt><dd>{{ item.status_remarks|default:"-" }}</dd></div>
@@ -123,10 +155,13 @@
         <div class="dispatch-bar">
             <span class="count" id="selected-count">0 selected</span>
             <div id="action-buttons">
+                <button type="button" id="receive-btn" disabled>Receive</button>
+                <button type="button" id="receive-motor-btn" disabled>Receive</button>
                 <button type="button" id="forward-btn" disabled>Dispatch</button>
                 <button type="button" id="tested-ok-btn" disabled>Tested OK</button>
                 <button type="button" id="repair-btn" disabled>Repair</button>
                 <button type="button" id="oem-btn" disabled>Dispatch to OEM</button>
+                <button type="button" id="scrap-btn" disabled>Scrap</button>
             </div>
         </div>
         <p class="mismatch-warning" id="mismatch-warning" hidden>Select items of the same type together (cards/RMU, or motor/pump).</p>
@@ -145,21 +180,93 @@
             </div>
         </dialog>
 
+        <dialog id="receive-dialog">
+            <div class="dialog-content">
+                <h2>Receive material</h2>
+                <div class="field">
+                    <label for="id_received_date">Received Date</label>
+                    <input type="date" name="received_date" id="id_received_date" form="action-form">
+                </div>
+                <div class="field">
+                    <label>Serial number matches ticket?</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="serial_matches" id="id_serial_matches_yes" value="yes" form="action-form"> Matches</label>
+                        <label><input type="radio" name="serial_matches" id="id_serial_matches_no" value="no" form="action-form"> Does not match</label>
+                    </div>
+                </div>
+                <div class="field" id="received-serial-no-field" hidden>
+                    <label for="id_received_serial_no">Received serial number</label>
+                    <input type="text" name="received_serial_no" id="id_received_serial_no" form="action-form">
+                </div>
+                <div class="field">
+                    <label for="id_reservation_no">Reservation number</label>
+                    <input type="text" name="reservation_no" id="id_reservation_no" form="action-form">
+                </div>
+                <div class="field">
+                    <label for="id_receive_remarks">Remarks (required if it does not match)</label>
+                    <textarea name="receive_remarks" id="id_receive_remarks" form="action-form" rows="3"></textarea>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" id="receive-cancel" class="btn-cancel">Cancel</button>
+                    <button type="submit" form="action-form" class="btn-submit">Confirm Receive</button>
+                </div>
+            </div>
+        </dialog>
+
+        <dialog id="receive-motor-dialog">
+            <div class="dialog-content">
+                <h2>Receive Motor/Pump</h2>
+                <div class="field">
+                    <label for="id_motor_received_date">Receive Date</label>
+                    <input type="date" name="motor_received_date" id="id_motor_received_date" form="action-form">
+                </div>
+                <div class="field">
+                    <label for="id_motor_capacity">Capacity</label>
+                    <select name="motor_capacity" id="id_motor_capacity" form="action-form">
+                        <option value="">— Select —</option>
+                        {% for value, label in motor_capacity_choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="id_motor_oem_name">OEM Name</label>
+                    <select name="motor_oem_name" id="id_motor_oem_name" form="action-form">
+                        <option value="">— Select —</option>
+                    </select>
+                </div>
+                <div class="field" id="motor-head-size-field">
+                    <label for="id_motor_head_size">Head Size</label>
+                    <select name="motor_head_size" id="id_motor_head_size" form="action-form">
+                        <option value="">— Select —</option>
+                        {% for value, label in motor_head_size_choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field" id="motor-inch-size-field">
+                    <label for="id_motor_inch_size">Inch Size</label>
+                    <select name="motor_inch_size" id="id_motor_inch_size" form="action-form">
+                        <option value="">— Select —</option>
+                        {% for value, label in motor_inch_size_choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="id_motor_receive_remarks">Remarks (optional)</label>
+                    <textarea name="motor_receive_remarks" id="id_motor_receive_remarks" form="action-form" rows="3"></textarea>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" id="receive-motor-cancel" class="btn-cancel">Cancel</button>
+                    <button type="submit" form="action-form" class="btn-submit">Confirm Receive</button>
+                </div>
+            </div>
+        </dialog>
+
         <dialog id="forward-dialog">
             <div class="dialog-content">
                 <h2>Dispatch onward</h2>
-                <div class="field">
-                    <label for="id_fwd_pickup_number">Pickup Number</label>
-                    <input type="text" name="pickup_number" id="id_fwd_pickup_number" form="action-form" required>
-                </div>
-                <div class="field">
-                    <label for="id_fwd_lr_number">LR Number</label>
-                    <input type="text" name="lr_number" id="id_fwd_lr_number" form="action-form" required>
-                </div>
-                <div class="field">
-                    <label for="id_fwd_delivery_challan_number">Delivery Challan Number</label>
-                    <input type="text" name="delivery_challan_number" id="id_fwd_delivery_challan_number" form="action-form" required>
-                </div>
                 <div class="field">
                     <label for="id_fwd_delivery_partner">Delivery Partner</label>
                     <select name="delivery_partner" id="id_fwd_delivery_partner" form="action-form">
@@ -167,12 +274,25 @@
                         {% for partner in delivery_partners %}
                             <option value="{{ partner.pk }}">{{ partner.name }}</option>
                         {% endfor %}
+                        <option value="by_hand">By Hand</option>
                         <option value="other">Other</option>
                     </select>
                 </div>
                 <div class="field" id="fwd-custom-partner-field" hidden>
                     <label for="id_fwd_custom_delivery_partner">Specify delivery partner</label>
                     <input type="text" name="custom_delivery_partner" id="id_fwd_custom_delivery_partner" form="action-form">
+                </div>
+                <div class="field" id="fwd-field-pickup-number">
+                    <label for="id_fwd_pickup_number">Pickup Number</label>
+                    <input type="text" name="pickup_number" id="id_fwd_pickup_number" form="action-form">
+                </div>
+                <div class="field" id="fwd-field-lr-number">
+                    <label for="id_fwd_lr_number">LR Number</label>
+                    <input type="text" name="lr_number" id="id_fwd_lr_number" form="action-form">
+                </div>
+                <div class="field" id="fwd-field-delivery-challan-number">
+                    <label for="id_fwd_delivery_challan_number">Delivery Challan Number</label>
+                    <input type="text" name="delivery_challan_number" id="id_fwd_delivery_challan_number" form="action-form">
                 </div>
                 <div class="field">
                     <label for="id_fwd_destination">Destination (Warehouse)</label>
@@ -193,9 +313,12 @@
                 </div>
             </div>
         </dialog>
+
+        {{ motor_surface_oem_choices|json_script:"motor-surface-oem-choices" }}
+        {{ submersible_oem_choices|json_script:"submersible-oem-choices" }}
     {% endif %}
 {% endblock %}
 
 {% block scripts %}
-    <script src="{% static 'tracker/warehouse.js' %}?v=3"></script>
+    <script src="{% static 'tracker/warehouse.js' %}?v=6"></script>
 {% endblock %}

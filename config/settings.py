@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 from config import settings_local
@@ -99,6 +100,14 @@ DATABASES = {
         'PORT': os.environ.get('CLAPPIA_DB_PORT', settings_local.CLAPPIA_DB_PORT),
     },
 }
+
+# 'clappia' is read-only against another team's live RDS -- the test user
+# has no CREATE DATABASE privilege there. Tests never query it for real
+# (ClappiaData reads are mocked), so just point it at 'default' during
+# `manage.py test` rather than letting Django try to provision a test DB
+# on the real external host.
+if 'test' in sys.argv:
+    DATABASES['clappia'] = DATABASES['default']
 
 DATABASE_ROUTERS = ['tracker.db_router.ClappiaRouter']
 

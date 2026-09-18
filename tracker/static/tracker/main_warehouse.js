@@ -2,8 +2,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const checkboxes = Array.from(document.querySelectorAll('.material-select'));
   const countLabel = document.getElementById('selected-count');
   const receiveBtn = document.getElementById('receive-btn');
+  const receiveMotorBtn = document.getElementById('receive-motor-btn');
   const oemBtn = document.getElementById('oem-btn');
   const scrapBtn = document.getElementById('scrap-btn');
+  const repairedBtn = document.getElementById('repaired-btn');
   const stockBtn = document.getElementById('stock-btn');
   const mismatchWarning = document.getElementById('mismatch-warning');
   const hiddenFieldsContainer = document.getElementById('selected-items-fields');
@@ -35,6 +37,24 @@ document.addEventListener('DOMContentLoaded', function () {
   const serialMatchesYes = document.getElementById('id_serial_matches_yes');
   const serialMatchesNo = document.getElementById('id_serial_matches_no');
   const receiveRemarksInput = document.getElementById('id_receive_remarks');
+  const receiveMotorDialog = document.getElementById('receive-motor-dialog');
+  const receiveMotorCancel = document.getElementById('receive-motor-cancel');
+  const stockReservationField = document.getElementById('stock-reservation-field');
+  const motorOemSelect = document.getElementById('id_motor_oem_name');
+  const motorHeadSizeField = document.getElementById('motor-head-size-field');
+  const motorHeadSizeSelect = document.getElementById('id_motor_head_size');
+  const motorInchSizeField = document.getElementById('motor-inch-size-field');
+  const motorInchSizeSelect = document.getElementById('id_motor_inch_size');
+
+  // OEM name list depends on the selected item's pump type -- see
+  // DispatchItem.motor_pump_type and the two json_script blocks at the
+  // bottom of the page.
+  function readJsonScript(id) {
+    const el = document.getElementById(id);
+    return el ? JSON.parse(el.textContent) : [];
+  }
+  const motorSurfaceOemChoices = readJsonScript('motor-surface-oem-choices');
+  const submersibleOemChoices = readJsonScript('submersible-oem-choices');
 
   // The receive dialog's fields share the same <form> as the simple remarks
   // dialog, so a required field in the closed dialog would silently block
@@ -48,6 +68,13 @@ document.addEventListener('DOMContentLoaded', function () {
   ];
   const motorRequiredFields = [document.getElementById('id_inward_reservation_no'), document.getElementById('id_outward_reservation_no')];
   const stockRequiredFields = [document.getElementById('id_stock_outward_reservation_no')];
+  // Head/Inch size are required separately in openReceiveMotorDialog --
+  // only for Surface/Submersible Pump, not for a bare Motor.
+  const receiveMotorRequiredFields = [
+    document.getElementById('id_motor_received_date'),
+    document.getElementById('id_motor_capacity'),
+    document.getElementById('id_motor_oem_name'),
+  ];
   const cardOemRequiredFields = [
     document.getElementById('id_card_oem_lr_no'),
     document.getElementById('id_card_oem_challan_no'),
@@ -88,6 +115,12 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  function setReceiveMotorFieldsRequired(isRequired) {
+    receiveMotorRequiredFields.forEach((field) => {
+      if (field) field.required = isRequired;
+    });
+  }
+
   // Turns off every dialog's required fields except the one named -- called
   // whenever a dialog opens, so a stray required field left over from a
   // previously-opened (now closed) dialog can never block this submission.
@@ -97,6 +130,13 @@ document.addEventListener('DOMContentLoaded', function () {
     setStockFieldsRequired(name === 'stock');
     setCardOemFieldsRequired(name === 'cardOem');
     setCardScrapFieldsRequired(name === 'cardScrap');
+    setReceiveMotorFieldsRequired(name === 'receiveMotor');
+    if (stockReservationField) stockReservationField.hidden = name !== 'stock';
+    // Reset here so a bare Motor (or a dialog closed without Cancel, e.g.
+    // Escape) never leaves these stuck required for the next dialog --
+    // openReceiveMotorDialog sets them true again when the type needs them.
+    if (motorHeadSizeSelect) motorHeadSizeSelect.required = false;
+    if (motorInchSizeSelect) motorInchSizeSelect.required = false;
   }
 
   function updateSerialNoVisibility() {
@@ -131,7 +171,7 @@ document.addEventListener('DOMContentLoaded', function () {
       row.classList.toggle('selected', !!(cb && cb.checked));
     });
 
-    [receiveBtn, oemBtn, scrapBtn, stockBtn].forEach((btn) => {
+    [receiveBtn, receiveMotorBtn, oemBtn, scrapBtn, repairedBtn, stockBtn].forEach((btn) => {
       btn.hidden = true;
       btn.disabled = true;
     });
@@ -149,10 +189,23 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const group = selected[0].dataset.actionGroup;
+
+    // Motor / Surface Pump / Submersible Pump each need a different OEM
+    // list, and only Surface/Submersible ask for Head/Inch size -- mixing
+    // types in one receive would apply one item's answers to all of them.
+    if (group === 'receive_motor') {
+      const motorTypes = new Set(selected.map((cb) => cb.dataset.motorType));
+      if (motorTypes.size > 1) {
+        mismatchWarning.hidden = false;
+        return;
+      }
+    }
+
     currentGroup = group;
     const btns = {
       receive: [receiveBtn],
-      dispatch_to_oem: [oemBtn, scrapBtn],
+      receive_motor: [receiveMotorBtn],
+      motor_disposal: [oemBtn, scrapBtn, repairedBtn],
       card_disposal: [oemBtn, scrapBtn],
       add_to_stock: [stockBtn],
     }[group] || [];
@@ -216,13 +269,47 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function openRemarksDialog(action, title) {
-    setOnlyRequired('stock');
+    // Only 'add_to_stock' needs the reservation number -- this dialog is
+    // reused as a plain remarks-only prompt for 'repaired' too.
+    setOnlyRequired(action === 'add_to_stock' ? 'stock' : null);
     actionField.value = action;
     remarksDialogTitle.textContent = title;
     document.getElementById('id_stock_outward_reservation_no').value = '';
     document.getElementById('id_simple_remarks').value = '';
     populateSelectedFields();
     remarksDialog.showModal();
+  }
+
+  function populateOemOptions(choices) {
+    motorOemSelect.innerHTML = '<option value="">— Select —</option>';
+    choices.forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      motorOemSelect.appendChild(option);
+    });
+  }
+
+  function openReceiveMotorDialog() {
+    setOnlyRequired('receiveMotor');
+    const selected = getSelected();
+    const type = selected.length ? selected[0].dataset.motorType : '';
+    const isMotor = type === 'motor';
+    populateOemOptions(type === 'submersible_pump' ? submersibleOemChoices : motorSurfaceOemChoices);
+    // Head/Inch size don't apply to a bare Motor -- only Surface/Submersible Pump.
+    motorHeadSizeField.hidden = isMotor;
+    motorInchSizeField.hidden = isMotor;
+    motorHeadSizeSelect.required = !isMotor;
+    motorInchSizeSelect.required = !isMotor;
+    actionField.value = 'receive_motor';
+    document.getElementById('id_motor_received_date').value = '';
+    document.getElementById('id_motor_capacity').value = '';
+    motorOemSelect.value = '';
+    motorHeadSizeSelect.value = '';
+    motorInchSizeSelect.value = '';
+    document.getElementById('id_motor_receive_remarks').value = '';
+    populateSelectedFields();
+    receiveMotorDialog.showModal();
   }
 
   function openMotorDialog(action, title) {
@@ -279,6 +366,14 @@ document.addEventListener('DOMContentLoaded', function () {
       openRemarksDialog('add_to_stock', 'Add to Stock');
     });
   }
+  if (repairedBtn) {
+    repairedBtn.addEventListener('click', function () {
+      openRemarksDialog('repaired', 'Repaired');
+    });
+  }
+  if (receiveMotorBtn) {
+    receiveMotorBtn.addEventListener('click', openReceiveMotorDialog);
+  }
   if (receiveBtn) {
     receiveBtn.addEventListener('click', function () {
       setOnlyRequired('receive');
@@ -305,6 +400,12 @@ document.addEventListener('DOMContentLoaded', function () {
     receiveCancel.addEventListener('click', function () {
       setOnlyRequired(null);
       receiveDialog.close();
+    });
+  }
+  if (receiveMotorCancel) {
+    receiveMotorCancel.addEventListener('click', function () {
+      setOnlyRequired(null);
+      receiveMotorDialog.close();
     });
   }
   if (motorCancel) {

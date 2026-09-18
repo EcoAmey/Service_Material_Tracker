@@ -66,6 +66,7 @@
                             <div class="col" data-label="Material">
                                 <span class="material-name">{{ line.material_name }}</span>
                                 <span class="part-type">{{ line.part_type_label }}</span>
+                                {% if line.problem %}<span class="fault-tag">{{ line.problem }}</span>{% endif %}
                             </div>
                             <div class="col" data-label="Faulty S/N">{{ line.faulty_serial }}</div>
                             <div class="col" data-label="Status">
@@ -83,6 +84,14 @@
                             <div class="field-pair"><dt>Farmer</dt><dd>{{ line.farmer_name }}</dd></div>
                             <div class="field-pair"><dt>Location</dt><dd>{{ line.location }}</dd></div>
                             <div class="field-pair"><dt>Service Person</dt><dd>{{ line.service_person_name }}</dd></div>
+                            {% if line.is_dispatched %}
+                                <div class="field-pair"><dt>Dispatch Date</dt><dd>{{ line.dispatch_date|date:"d M Y" }}</dd></div>
+                                <div class="field-pair"><dt>Delivery Partner</dt><dd>{{ line.delivery_partner_name }}</dd></div>
+                                <div class="field-pair"><dt>Dispatch Location</dt><dd>{{ line.destination_name }}</dd></div>
+                                <div class="field-pair"><dt>Pickup No.</dt><dd>{{ line.pickup_number }}</dd></div>
+                                <div class="field-pair"><dt>LR No.</dt><dd>{{ line.lr_number }}</dd></div>
+                                <div class="field-pair"><dt>Challan No.</dt><dd>{{ line.delivery_challan_number }}</dd></div>
+                            {% endif %}
                         </div>
                     </div>
                 {% empty %}
@@ -102,30 +111,31 @@
         <div class="dialog-content">
             <h2>Dispatch materials</h2>
             <div class="field">
-                <label for="id_pickup_number">Pickup Number</label>
-                <input type="text" name="pickup_number" id="id_pickup_number" form="dispatch-form" required>
-            </div>
-            <div class="field">
-                <label for="id_lr_number">LR Number</label>
-                <input type="text" name="lr_number" id="id_lr_number" form="dispatch-form" required>
-            </div>
-            <div class="field">
-                <label for="id_delivery_challan_number">Delivery Challan Number</label>
-                <input type="text" name="delivery_challan_number" id="id_delivery_challan_number" form="dispatch-form" required>
-            </div>
-            <div class="field">
                 <label for="id_delivery_partner">Delivery Partner</label>
                 <select name="delivery_partner" id="id_delivery_partner" form="dispatch-form">
                     <option value="" selected>Select delivery partner</option>
                     {% for partner in delivery_partners %}
                         <option value="{{ partner.pk }}">{{ partner.name }}</option>
                     {% endfor %}
+                    <option value="by_hand">By Hand</option>
                     <option value="other">Other</option>
                 </select>
             </div>
             <div class="field" id="custom-delivery-partner-field" hidden>
                 <label for="id_custom_delivery_partner">Specify delivery partner</label>
                 <input type="text" name="custom_delivery_partner" id="id_custom_delivery_partner" form="dispatch-form">
+            </div>
+            <div class="field" id="field-pickup-number">
+                <label for="id_pickup_number">Pickup Number</label>
+                <input type="text" name="pickup_number" id="id_pickup_number" form="dispatch-form">
+            </div>
+            <div class="field" id="field-lr-number">
+                <label for="id_lr_number">LR Number</label>
+                <input type="text" name="lr_number" id="id_lr_number" form="dispatch-form">
+            </div>
+            <div class="field" id="field-delivery-challan-number">
+                <label for="id_delivery_challan_number">Delivery Challan Number</label>
+                <input type="text" name="delivery_challan_number" id="id_delivery_challan_number" form="dispatch-form">
             </div>
             <div class="field">
                 <label for="id_destination">Destination</label>

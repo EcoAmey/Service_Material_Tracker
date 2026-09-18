@@ -71,8 +71,9 @@
                             <div class="col" data-label="Material">
                                 <span class="material-name">{{ item.material_name }}</span>
                                 <span class="part-type">{{ item.get_part_type_display }}</span>
+                                {% if item.problem %}<span class="fault-tag">{{ item.problem }}</span>{% endif %}
                             </div>
-                            <div class="col" data-label="Faulty S/N">{{ item.faulty_serial }}</div>
+                            <div class="col" data-label="Faulty S/N">{% if item.serial_was_corrected %}<span class="corrected-serial" title="Ticket reported {{ item.faulty_serial }}">{{ item.display_faulty_serial }}</span>{% else %}{{ item.faulty_serial }}{% endif %}</div>
                             <div class="col" data-label="Assigned to SD">{{ item.assigned_to_service_desk_at|date:"d M Y" }}</div>
                             <div class="col" data-label="Status">
                                 <span class="status-badge {% if item.is_pending_for_electronics %}pending{% else %}dispatched{% endif %}">{% if item.electronics_final_remark %}{{ item.get_electronics_final_remark_display }}{% else %}{{ item.get_status_display }}{% endif %}</span>
@@ -80,6 +81,10 @@
                             <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
                         </div>
                         <div class="row-details" hidden>
+                            <div class="field-pair"><dt>Dispatch Date</dt><dd>{{ item.effective_dispatch.dispatched_at|date:"d M Y" }}</dd></div>
+                            <div class="field-pair"><dt>Delivery Partner</dt><dd>{{ item.effective_dispatch.delivery_partner.name }}</dd></div>
+                            <div class="field-pair"><dt>Destination</dt><dd>{{ item.effective_dispatch.destination.name }}</dd></div>
+                            <div class="field-pair"><dt>Pickup No.</dt><dd>{{ item.effective_dispatch.pickup_number }}</dd></div>
                             <div class="field-pair"><dt>LR No.</dt><dd>{{ item.effective_dispatch.lr_number }}</dd></div>
                             <div class="field-pair"><dt>Challan No.</dt><dd>{{ item.effective_dispatch.delivery_challan_number }}</dd></div>
                             <div class="field-pair"><dt>SI Details</dt><dd>{{ item.si_details }}</dd></div>
@@ -90,11 +95,21 @@
                             {% if item.received_date %}
                                 <div class="field-pair"><dt>Received On</dt><dd>{{ item.received_date|date:"d M Y" }}</dd></div>
                                 <div class="field-pair"><dt>Serial Match</dt><dd>{% if item.received_serial_matches %}Yes{% else %}No{% endif %}</dd></div>
+                                {% if item.received_serial_no %}
+                                    <div class="field-pair"><dt>Ticket Faulty S/N</dt><dd>{{ item.faulty_serial }}</dd></div>
+                                    <div class="field-pair"><dt>Received S/N</dt><dd>{{ item.received_serial_no }}</dd></div>
+                                {% endif %}
                             {% endif %}
                             <div class="field-pair"><dt>Reservation No.</dt><dd>{{ item.warehouse_reservation_no }}</dd></div>
                             {% if not item.is_pending_for_electronics %}
                                 <div class="field-pair"><dt>Electronics Engineer</dt><dd>{{ item.electronics_engineer_name }}</dd></div>
-                                <div class="field-pair"><dt>Initial Observation</dt><dd>{{ item.electronics_initial_observation }}</dd></div>
+                                {% if item.electronics_initial_observation %}
+                                    <div class="field-pair"><dt>Initial Observation</dt><dd>{{ item.electronics_initial_observation }}</dd></div>
+                                {% endif %}
+                                <div class="field-pair"><dt>Physical & Visual Damage</dt><dd>{{ item.electronics_physical_visual_damage }}</dd></div>
+                                <div class="field-pair"><dt>Component Status</dt><dd>{{ item.electronics_component_status }}</dd></div>
+                                <div class="field-pair"><dt>Power & Electrical Faults</dt><dd>{{ item.electronics_power_electrical_faults }}</dd></div>
+                                <div class="field-pair"><dt>System & Display Behavior</dt><dd>{{ item.electronics_system_display_behavior }}</dd></div>
                                 <div class="field-pair"><dt>PCB Type</dt><dd>{{ item.electronics_pcb_type }}</dd></div>
                                 <div class="field-pair"><dt>PCB Issue</dt><dd>{{ item.electronics_pcb_issue }}</dd></div>
                                 <div class="field-pair"><dt>Failure Category</dt><dd>{{ item.electronics_failure_category }}</dd></div>
@@ -139,8 +154,20 @@
                 {{ proceed_form.electronics_engineer_name }}
             </div>
             <div class="field">
-                <label for="{{ proceed_form.initial_observation.id_for_label }}">Initial Observation (By Elect. Prod)</label>
-                {{ proceed_form.initial_observation }}
+                <label for="{{ proceed_form.physical_visual_damage.id_for_label }}">Physical & Visual Damage</label>
+                {{ proceed_form.physical_visual_damage }}
+            </div>
+            <div class="field">
+                <label for="{{ proceed_form.component_status.id_for_label }}">Component Status</label>
+                {{ proceed_form.component_status }}
+            </div>
+            <div class="field">
+                <label for="{{ proceed_form.power_electrical_faults.id_for_label }}">Power & Electrical Faults</label>
+                {{ proceed_form.power_electrical_faults }}
+            </div>
+            <div class="field">
+                <label for="{{ proceed_form.system_display_behavior.id_for_label }}">System & Display Behavior</label>
+                {{ proceed_form.system_display_behavior }}
             </div>
             <div class="field">
                 <label for="{{ proceed_form.pcb_type.id_for_label }}">PCB type received</label>
@@ -205,5 +232,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script src="{% static 'tracker/electronics.js' %}?v=3"></script>
+    <script src="{% static 'tracker/electronics.js' %}?v=5"></script>
 {% endblock %}

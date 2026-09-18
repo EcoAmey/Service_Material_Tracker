@@ -149,9 +149,11 @@ document.addEventListener('DOMContentLoaded', function () {
     updateTriggerLabel();
   }
 
-  // Only Sub Category needs the searchable combobox (it's a long
-  // multi-select list) -- the other dropdowns stay plain native <select>s.
-  ['sub_category'].forEach(function (name) {
+  // Every multi-select checklist gets the searchable combobox -- a plain
+  // <select multiple> renders as an always-open listbox, which looks bad
+  // stacked several-to-a-dialog; the combo collapses to a trigger button
+  // instead, same as a normal single-select dropdown.
+  ['physical_visual_damage', 'component_status', 'power_electrical_faults', 'system_display_behavior', 'sub_category'].forEach(function (name) {
     const el = document.getElementById('id_' + name);
     if (el) initSearchableSelect(el);
   });
@@ -159,7 +161,10 @@ document.addEventListener('DOMContentLoaded', function () {
   // Dropdowns to clear back to their unselected state whenever the Proceed
   // dialog is opened fresh for a new item -- no forced defaults, just blank.
   const SELECT_FIELD_NAMES = [
-    'initial_observation',
+    'physical_visual_damage',
+    'component_status',
+    'power_electrical_faults',
+    'system_display_behavior',
     'pcb_type',
     'pcb_issue',
     'failure_category',

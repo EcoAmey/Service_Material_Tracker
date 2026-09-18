@@ -149,13 +149,26 @@ document.addEventListener('DOMContentLoaded', function () {
   applyFilters();
   applySort();
 
-  if (partnerSelect && customPartnerField) {
+  const courierOnlyFields = [
+    document.getElementById('field-pickup-number'),
+    document.getElementById('field-lr-number'),
+    document.getElementById('field-delivery-challan-number'),
+  ];
+
+  if (partnerSelect) {
     partnerSelect.addEventListener('change', function () {
       const isOther = partnerSelect.value === 'other';
-      customPartnerField.hidden = !isOther;
-      if (!isOther) {
-        document.getElementById('id_custom_delivery_partner').value = '';
+      if (customPartnerField) {
+        customPartnerField.hidden = !isOther;
+        if (!isOther) document.getElementById('id_custom_delivery_partner').value = '';
       }
+
+      const isByHand = partnerSelect.value === 'by_hand';
+      courierOnlyFields.forEach((field) => {
+        if (!field) return;
+        field.hidden = isByHand;
+        if (isByHand) field.querySelector('input').value = '';
+      });
     });
   }
 });

@@ -20,23 +20,50 @@ class DeliveryPartnerFieldsMixin(forms.Form):
         return cleaned
 
 
-class DispatchForm(DeliveryPartnerFieldsMixin, forms.Form):
-    """Engineer's initial dispatch to a regional warehouse or RSC."""
+def resolve_delivery_partner(cleaned_data):
+    """DeliveryPartnerFieldsMixin's result is either a real DeliveryPartner
+    or a free-typed name. A typed name still needs a real row (the FK it
+    fills isn't nullable), but as inactive -- so a one-off name typed here
+    is usable for this dispatch without joining the reusable dropdown list."""
+    delivery_partner = cleaned_data['delivery_partner']
+    custom_name = cleaned_data['custom_delivery_partner'].strip()
+    if not delivery_partner and custom_name:
+        delivery_partner, _ = DeliveryPartner.objects.get_or_create(
+            name=custom_name, defaults={'is_active': False}
+        )
+    return delivery_partner
 
-    pickup_number = forms.CharField(max_length=100)
-    lr_number = forms.CharField(max_length=100)
-    delivery_challan_number = forms.CharField(max_length=100)
+
+class DispatchForm(DeliveryPartnerFieldsMixin, forms.Form):
+    """Engineer's initial dispatch to a regional warehouse or RSC.
+
+    pickup/LR/challan numbers are optional here (not required=True) because
+    a "By Hand" dispatch (handed to the warehouse directly, no courier) has
+    none of these -- DispatchSubmitView enforces them as required for every
+    other delivery partner.
+    """
+
+    pickup_number = forms.CharField(max_length=100, required=False)
+    lr_number = forms.CharField(max_length=100, required=False)
+    delivery_challan_number = forms.CharField(max_length=100, required=False)
     destination = forms.ModelChoiceField(queryset=DispatchLocation.objects.filter(is_active=True))
     remarks = forms.CharField(widget=forms.Textarea, required=False)
 
 
 class ForwardDispatchForm(DeliveryPartnerFieldsMixin, forms.Form):
     """A regional warehouse forwarding a material onward -- only
-    Warehouse-type locations are valid further destinations."""
+    Warehouse-type locations are valid further destinations.
 
-    pickup_number = forms.CharField(max_length=100)
-    lr_number = forms.CharField(max_length=100)
-    delivery_challan_number = forms.CharField(max_length=100)
+    pickup/LR/challan numbers are optional here (not required=True) because
+    a "By Hand" dispatch (handed to the destination warehouse directly, no
+    courier) has none of these -- WarehouseActionView enforces them as
+    required for every other delivery partner (mirrors DispatchForm /
+    DispatchSubmitView on the engineer's own dispatch).
+    """
+
+    pickup_number = forms.CharField(max_length=100, required=False)
+    lr_number = forms.CharField(max_length=100, required=False)
+    delivery_challan_number = forms.CharField(max_length=100, required=False)
     destination = forms.ModelChoiceField(
         queryset=DispatchLocation.objects.filter(is_active=True, location_type=DispatchLocation.WAREHOUSE)
     )
@@ -136,53 +163,171 @@ def _choices(text):
     return [(line.strip(), line.strip()) for line in text.strip().splitlines() if line.strip()]
 
 
-INITIAL_OBSERVATION_CHOICES = _choices("""
-Battery holder missing
-C1 & C2 found damaged
-C29 missing
-Display Hang
-Fly back track damaged
-Display blank
-Extra Cap removed
-Power off
-PCB burn
-IGBT short
-MTR phase loss
-Track damaged
-PCB BROKEN
-TRACK DAMAGED
-Communication Problem
-Short circuit on display
-Current missmatched
-IGBT temp.
-Connector broken
-faulty Display
-Components Missing
-Network Problem
-Flyback components damaged
-Dry solder
-Over voltage
-MTR unbalanced
-Serial no. sticker
-TMS IC SHORT
-COMPONENTS DAMAGED/SHORT/BUST
-EC200 short
-control board off
-PCB GREEN MASKING EXPOSED
-OVER CURRENT
-UVW VOLTAGE MISMATCH
-CURRENT SECTION BUST
-WATER DAMAGED PCB
-UNDER VOLTAGE SHOWN ON DISPLAY
-MOV BUST
-Burg strip damage
-Blinking PCB
-DEACTIATED PCB
-OUT DATED ECN OLD PCB
-TRACK BURN
-MUD FOUND ON PCB
-DC BUS VOLTAGE MISMATCH
-FAN CONTROLLER BROKEN
+MOTOR_CAPACITY_CHOICES = _choices("""
+1 HP
+2 HP
+3 HP
+5 HP
+7.5 HP
+10 HP
+""")
+
+MOTOR_HEAD_SIZE_CHOICES = _choices("""
+10 Meters
+20 Meters
+30 Meters
+40 Meters
+50 Meters
+60 Meters
+70 Meters
+80 Meters
+85 Meters
+90 Meters
+100 Meters
+35 Meters
+150 Meters
+180 Meters
+120 Meters
+130 Meters
+""")
+
+MOTOR_INCH_SIZE_CHOICES = _choices("""
+2 inch
+4 inch
+6 inch
+8 inch
+""")
+
+# OEM name list depends on the pump type -- Motor/Surface Pump share one
+# list, Submersible Pump uses another (see DispatchItem.motor_pump_type).
+MOTOR_SURFACE_OEM_CHOICES = _choices("""
+Techno_OEM-1
+Borana_OEM-3
+Varuna_OEM-4
+Oswal_OEM-5
+Matel_OEM-2
+Amrut
+CRI
+Shakti
+Sleka
+Bronex
+Silver
+ViraSubmersible_OEM-7
+Oswal Pumps
+Latteys_OEM-8
+Ravi Water Flow_OEM-9
+Felie_OEM-13
+Advik
+Fountain Pumps_OEM-11
+Hiwaki Pumps_OEM-12
+Japhet_OEM-13_Import
+Yongxin_OEM-14_Import
+Inox
+Pluga
+Ganesh Pumps
+""")
+
+SUBMERSIBLE_PUMP_OEM_CHOICES = _choices("""
+Techno_OEM-1
+Borana_OEM-3
+Varuna_OEM-4
+Oswal_OEM-5
+Matel_OEM-2
+Amrut
+CRI
+Shakti
+Sleka
+Bronex
+Silver Pumps
+Latteys Pumps
+Oswal Pumps
+CNP_OEM-8
+Ravi Water Flow_OEM-9
+Vallabh Pumps
+Parth_OEM-10
+Fountain Pumps_OEM-11
+RCP Engineering_OEM-12
+Japhet_OEM-13_Import
+MEC
+Ganesh Pumps
+Inox
+Pluga
+""")
+
+# Union of both lists -- the form only checks the submitted name is valid
+# for *some* pump type; the dialog's JS is what shows the right list for
+# the selected item.
+MOTOR_OEM_CHOICES = MOTOR_SURFACE_OEM_CHOICES + [
+    choice for choice in SUBMERSIBLE_PUMP_OEM_CHOICES if choice not in MOTOR_SURFACE_OEM_CHOICES
+]
+
+
+class MotorReceiveForm(forms.Form):
+    """Motor/Pump receive checklist -- captured once (at either the regional
+    or main warehouse) before an OEM/Scrap/Repaired/Service Center decision
+    can be made. See DispatchItem.is_pending_motor_receive."""
+
+    received_date = forms.DateField()
+    capacity = forms.ChoiceField(choices=MOTOR_CAPACITY_CHOICES)
+    oem_name = forms.ChoiceField(choices=MOTOR_OEM_CHOICES)
+    # Head/inch size only apply to Surface/Submersible Pump, not a bare
+    # Motor -- not required here since the dialog hides them for a motor
+    # (see DispatchItem.motor_pump_type).
+    head_size = forms.ChoiceField(choices=MOTOR_HEAD_SIZE_CHOICES, required=False)
+    inch_size = forms.ChoiceField(choices=MOTOR_INCH_SIZE_CHOICES, required=False)
+    remarks = forms.CharField(widget=forms.Textarea, required=False)
+
+
+# The old single "Initial Observation" dropdown is now 4 categorized
+# checklists (each a multi-select, mirroring SUB_CATEGORY_CHOICES below) --
+# see ElectronicsProceedForm.
+PHYSICAL_VISUAL_DAMAGE_CHOICES = _choices("""
+PCB Broken / Cracked
+Track Burned / Damaged
+Flyback Track Damaged
+PCB Green Masking Exposed
+PCB Burned
+Water / Moisture Damaged
+Mud / Foreign Material Found on PCB
+Corrosion / Oxidation Present
+NA
+""")
+
+COMPONENT_STATUS_CHOICES = _choices("""
+Components Damaged / Shorted / Burst
+TMS IC Short
+EC200 Short
+IGBT Short
+MOV Burst
+Capacitor Swollen / Damaged (e.g., C1, C2)
+Component Missing (e.g., C29, Battery Holder)
+Burg Strip / Connector Damage
+Dry Solder / Solder Bridge
+NA
+""")
+
+POWER_ELECTRICAL_FAULT_CHOICES = _choices("""
+Over Current Fault
+Current Section Burst
+Current Mismatched
+UVW Voltage Mismatch
+DC Bus Voltage Mismatch
+Under Voltage Displayed
+MTR Phase Loss
+NA
+""")
+
+SYSTEM_DISPLAY_BEHAVIOR_CHOICES = _choices("""
+Control Board Off / Power Off
+Display Blank
+Display Frozen / Hung
+Short Circuit on Display
+Communication Error / Problem
+Blinking PCB Status LED
+Fan Controller Broken
+Outdated ECN / Old Revision PCB
+Deactivated PCB
+NA
 """)
 
 PCB_TYPE_CHOICES = _choices("""
@@ -224,8 +369,8 @@ RMU 5.3.1
 """)
 
 PCB_ISSUE_CHOICES = _choices("""
-Both Ctrl+Power
-Only Ctrl
+Both Control+Power
+Only Control
 Only Power
 RMU
 PCB issue reported
@@ -321,7 +466,10 @@ class ElectronicsProceedForm(forms.Form):
     ]
 
     electronics_engineer_name = forms.CharField(max_length=255, label='Electronics Engineer name')
-    initial_observation = forms.ChoiceField(choices=BLANK + NA_CHOICE + INITIAL_OBSERVATION_CHOICES)
+    physical_visual_damage = forms.MultipleChoiceField(choices=PHYSICAL_VISUAL_DAMAGE_CHOICES, widget=forms.SelectMultiple)
+    component_status = forms.MultipleChoiceField(choices=COMPONENT_STATUS_CHOICES, widget=forms.SelectMultiple)
+    power_electrical_faults = forms.MultipleChoiceField(choices=POWER_ELECTRICAL_FAULT_CHOICES, widget=forms.SelectMultiple)
+    system_display_behavior = forms.MultipleChoiceField(choices=SYSTEM_DISPLAY_BEHAVIOR_CHOICES, widget=forms.SelectMultiple)
     pcb_type = forms.ChoiceField(choices=BLANK + NA_CHOICE + PCB_TYPE_CHOICES)
     pcb_issue = forms.ChoiceField(choices=BLANK + NA_CHOICE + PCB_ISSUE_CHOICES)
     failure_category = forms.ChoiceField(choices=BLANK + FAILURE_CATEGORY_CHOICES)

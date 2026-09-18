@@ -21,9 +21,16 @@ from .forms import (
     ElectronicsDispositionForm,
     ElectronicsProceedForm,
     ForwardDispatchForm,
+    MOTOR_CAPACITY_CHOICES,
+    MOTOR_HEAD_SIZE_CHOICES,
+    MOTOR_INCH_SIZE_CHOICES,
+    MOTOR_SURFACE_OEM_CHOICES,
+    SUBMERSIBLE_PUMP_OEM_CHOICES,
     MotorDispositionForm,
+    MotorReceiveForm,
     ReceiveMaterialForm,
     WarehouseRemarksForm,
+    resolve_delivery_partner,
 )
 from .models import DeliveryPartner, Dispatch, DispatchItem, DispatchLocation, User
 from .services import (
@@ -235,8 +242,21 @@ class AdminMaterialLookupView(AdminRequiredMixin, TemplateView):
                 .prefetch_related('status_events', 'status_events__changed_by')
                 .order_by('-created_at')
             )
+            # A material an engineer has logged but not yet dispatched has no
+            # DispatchItem row at all -- only the query above matched -- so
+            # it'd otherwise never show up in a lookup search.
+            needle = query.lower()
+            context['pending_results'] = [
+                line for line in get_material_lines_for_engineer()
+                if not line.is_dispatched and (
+                    needle in line.service_id.lower()
+                    or needle in (line.controller_serial or '').lower()
+                    or needle in (line.faulty_serial or '').lower()
+                )
+            ]
         else:
             context['results'] = []
+            context['pending_results'] = []
         return context
 
 
@@ -280,19 +300,58 @@ class RegionalWarehouseHomeView(LoginRequiredMixin, TemplateView):
         context['warehouse_destinations'] = DispatchLocation.objects.filter(
             is_active=True, location_type=DispatchLocation.WAREHOUSE
         )
+        context['motor_capacity_choices'] = MOTOR_CAPACITY_CHOICES
+        context['motor_surface_oem_choices'] = MOTOR_SURFACE_OEM_CHOICES
+        context['submersible_oem_choices'] = SUBMERSIBLE_PUMP_OEM_CHOICES
+        context['motor_head_size_choices'] = MOTOR_HEAD_SIZE_CHOICES
+        context['motor_inch_size_choices'] = MOTOR_INCH_SIZE_CHOICES
         return context
+
+
+def _missing_courier_fields(form):
+    """Pickup/LR/challan are only actually required for a courier dispatch,
+    not a By Hand one -- used by both DispatchSubmitView (engineer) and
+    WarehouseActionView (regional warehouse forward) after their form's own
+    validation, which leaves these optional so a By Hand submission passes."""
+    return [
+        label
+        for field, label in (
+            ('pickup_number', 'Pickup number'),
+            ('lr_number', 'LR number'),
+            ('delivery_challan_number', 'Delivery challan number'),
+        )
+        if not form.cleaned_data.get(field, '').strip()
+    ]
+
+
+def _motor_receive_form(post_data):
+    """Builds a MotorReceiveForm from its dialog's uniquely-prefixed field
+    names ('motor_capacity', etc) -- every dialog's fields live on one
+    shared <form> via form="action-form", so names can't collide."""
+    return MotorReceiveForm({
+        'received_date': post_data.get('motor_received_date', ''),
+        'capacity': post_data.get('motor_capacity', ''),
+        'oem_name': post_data.get('motor_oem_name', ''),
+        'head_size': post_data.get('motor_head_size', ''),
+        'inch_size': post_data.get('motor_inch_size', ''),
+        'remarks': post_data.get('motor_receive_remarks', ''),
+    })
 
 
 class WarehouseActionView(LoginRequiredMixin, View):
     """Handles a regional warehouse acting on one or more incoming items:
-    Tested OK / Repaired / Dispatched to OEM (status + remarks only), or
-    Dispatch (forward onward, a full second shipment)."""
+    Tested OK / Repaired / Dispatched to OEM / Scrapped (status + remarks
+    only), Dispatch (forward onward, a full second shipment), or one of two
+    receive checklists that must be completed before any other action
+    applies -- Receive (date + serial match, for a card) or Receive
+    Motor/Pump (capacity/OEM/head/inch/fault) -- see
+    DispatchItem.is_pending_card_receive / is_pending_motor_receive."""
 
     login_url = 'tracker:login'
 
-    SIMPLE_ACTIONS = {'tested_ok', 'repaired', 'dispatched_to_oem'}
+    SIMPLE_ACTIONS = {'tested_ok', 'repaired', 'dispatched_to_oem', 'scrapped'}
     CARD_ACTIONS = {'dispatch_forward', 'tested_ok'}
-    MOTOR_ACTIONS = {'dispatch_forward', 'repaired', 'dispatched_to_oem'}
+    MOTOR_ACTIONS = {'dispatch_forward', 'repaired', 'dispatched_to_oem', 'scrapped'}
 
     def post(self, request, *args, **kwargs):
         action = request.POST.get('action')
@@ -315,10 +374,61 @@ class WarehouseActionView(LoginRequiredMixin, View):
             messages.error(request, 'Select at least one incoming material to act on.')
             return redirect('tracker:warehouse_home')
 
+        if action == 'receive':
+            items = [item for item in items if item.is_pending_card_receive]
+            if not items:
+                messages.error(request, 'Select at least one incoming card to receive.')
+                return redirect('tracker:warehouse_home')
+            receive_data = request.POST.copy()
+            receive_data['remarks'] = request.POST.get('receive_remarks', '')
+            form = ReceiveMaterialForm(receive_data)
+            if not form.is_valid():
+                messages.error(request, 'Please correct the errors in the receive form.')
+                return redirect('tracker:warehouse_home')
+            DispatchItem.objects.filter(pk__in=[item.pk for item in items]).update(
+                received_date=form.cleaned_data['received_date'],
+                received_serial_matches=form.cleaned_data['serial_matches'] == 'yes',
+                received_serial_no=form.cleaned_data['received_serial_no'],
+                warehouse_reservation_no=form.cleaned_data['reservation_no'],
+                status_remarks=form.cleaned_data['remarks'],
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+            )
+            messages.success(request, f'Received {len(items)} item(s).')
+            return redirect('tracker:warehouse_home')
+
+        if action == 'receive_motor':
+            items = [item for item in items if item.is_pending_motor_receive]
+            if not items:
+                messages.error(request, 'Select at least one incoming motor/pump to receive.')
+                return redirect('tracker:warehouse_home')
+            form = _motor_receive_form(request.POST)
+            if not form.is_valid():
+                messages.error(request, 'Please correct the errors in the receive form.')
+                return redirect('tracker:warehouse_home')
+            DispatchItem.objects.filter(pk__in=[item.pk for item in items]).update(
+                received_date=form.cleaned_data['received_date'],
+                motor_capacity=form.cleaned_data['capacity'],
+                motor_oem_name=form.cleaned_data['oem_name'],
+                motor_head_size=form.cleaned_data['head_size'],
+                motor_inch_size=form.cleaned_data['inch_size'],
+                status_remarks=form.cleaned_data['remarks'],
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+            )
+            messages.success(request, f'Received {len(items)} item(s).')
+            return redirect('tracker:warehouse_home')
+
         for item in items:
             allowed = self.MOTOR_ACTIONS if item.is_motor_or_pump else self.CARD_ACTIONS
             if action not in allowed:
                 messages.error(request, 'That action is not valid for one or more selected materials.')
+                return redirect('tracker:warehouse_home')
+            if item.is_motor_or_pump and item.is_pending_motor_receive:
+                messages.error(request, 'Receive this motor/pump before choosing an action.')
+                return redirect('tracker:warehouse_home')
+            if item.is_pending_card_receive:
+                messages.error(request, 'Receive this card before choosing an action.')
                 return redirect('tracker:warehouse_home')
 
         item_pks = [item.pk for item in items]
@@ -343,17 +453,27 @@ class WarehouseActionView(LoginRequiredMixin, View):
 
         if action == 'dispatch_forward':
             post_data = request.POST.copy()
-            if post_data.get('delivery_partner') == 'other':
+            is_by_hand = post_data.get('delivery_partner') == 'by_hand'
+            if is_by_hand:
+                post_data['delivery_partner'] = ''
+                post_data['custom_delivery_partner'] = 'By Hand'
+            elif post_data.get('delivery_partner') == 'other':
                 post_data['delivery_partner'] = ''
             form = ForwardDispatchForm(post_data)
             if not form.is_valid():
                 messages.error(request, 'Please correct the errors in the forward dispatch form.')
                 return redirect('tracker:warehouse_home')
 
-            delivery_partner = form.cleaned_data['delivery_partner']
-            custom_partner_name = form.cleaned_data['custom_delivery_partner'].strip()
-            if not delivery_partner and custom_partner_name:
-                delivery_partner, _ = DeliveryPartner.objects.get_or_create(name=custom_partner_name)
+            # Pickup/LR/challan numbers only matter when a courier is
+            # actually involved -- a By Hand dispatch skips straight to the
+            # destination warehouse (mirrors DispatchSubmitView).
+            if not is_by_hand:
+                missing = _missing_courier_fields(form)
+                if missing:
+                    messages.error(request, f'{", ".join(missing)} required unless dispatching by hand.')
+                    return redirect('tracker:warehouse_home')
+
+            delivery_partner = resolve_delivery_partner(form.cleaned_data)
 
             with transaction.atomic():
                 new_dispatch = Dispatch.objects.create(
@@ -407,6 +527,11 @@ class MainWarehouseHomeView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['incoming_items'] = _get_main_warehouse_items()
+        context['motor_capacity_choices'] = MOTOR_CAPACITY_CHOICES
+        context['motor_surface_oem_choices'] = MOTOR_SURFACE_OEM_CHOICES
+        context['submersible_oem_choices'] = SUBMERSIBLE_PUMP_OEM_CHOICES
+        context['motor_head_size_choices'] = MOTOR_HEAD_SIZE_CHOICES
+        context['motor_inch_size_choices'] = MOTOR_INCH_SIZE_CHOICES
         return context
 
 
@@ -423,11 +548,18 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
       card_scrap below.
     - Add to Stock: closes the loop once Electronics has repaired an item
       and sent it back -- marks it added to the service stock.
+    - Receive Motor/Pump: the motor/pump equivalent of Receive -- a
+      capacity/OEM/head/inch/fault checklist instead of a serial-match
+      check. Doesn't change status; it only unlocks the OEM/Scrap/Repaired
+      decision below (see DispatchItem.is_pending_motor_receive).
     """
 
     login_url = 'tracker:login'
 
-    ACTIONS = {'receive', 'dispatch_to_oem', 'scrap', 'card_dispatch_to_oem', 'card_scrap', 'add_to_stock'}
+    ACTIONS = {
+        'receive', 'receive_motor', 'dispatch_to_oem', 'scrap', 'repaired',
+        'card_dispatch_to_oem', 'card_scrap', 'add_to_stock',
+    }
 
     def _eligible_items(self, action, selected_pks):
         candidates = _get_main_warehouse_items().filter(pk__in=selected_pks)
@@ -436,10 +568,15 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
                 item for item in candidates
                 if item.is_pending_for_main_warehouse and not item.is_motor_or_pump
             ]
-        if action in ('dispatch_to_oem', 'scrap'):
+        if action == 'receive_motor':
             return [
                 item for item in candidates
-                if item.is_pending_for_main_warehouse and item.is_motor_or_pump
+                if item.is_pending_for_main_warehouse and item.is_pending_motor_receive
+            ]
+        if action in ('dispatch_to_oem', 'scrap', 'repaired'):
+            return [
+                item for item in candidates
+                if item.is_pending_for_main_warehouse and item.is_motor_or_pump and item.received_date
             ]
         if action in ('card_dispatch_to_oem', 'card_scrap'):
             return [item for item in candidates if item.is_pending_oem_scrap_decision]
@@ -512,6 +649,41 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
                 messages.success(request, f'Received {len(items)} item(s), flagged for an OEM/Scrap decision.')
             else:
                 messages.success(request, f'Received {len(items)} item(s) and assigned to Service Desk.')
+            return redirect('tracker:main_warehouse_home')
+
+        if action == 'receive_motor':
+            form = _motor_receive_form(request.POST)
+            if not form.is_valid():
+                messages.error(request, 'Please correct the errors in the receive form.')
+                return redirect('tracker:main_warehouse_home')
+            DispatchItem.objects.filter(pk__in=item_pks).update(
+                received_date=form.cleaned_data['received_date'],
+                motor_capacity=form.cleaned_data['capacity'],
+                motor_oem_name=form.cleaned_data['oem_name'],
+                motor_head_size=form.cleaned_data['head_size'],
+                motor_inch_size=form.cleaned_data['inch_size'],
+                status_remarks=form.cleaned_data['remarks'],
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+            )
+            messages.success(request, f'Received {len(items)} item(s).')
+            return redirect('tracker:main_warehouse_home')
+
+        if action == 'repaired':
+            form = WarehouseRemarksForm({'remarks': request.POST.get('simple_remarks', '')})
+            if not form.is_valid():
+                messages.error(request, 'Please correct the errors in the form.')
+                return redirect('tracker:main_warehouse_home')
+            remarks = form.cleaned_data['remarks']
+            DispatchItem.objects.filter(pk__in=item_pks).update(
+                status='repaired',
+                status_remarks=remarks,
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+            )
+            for item in items:
+                record_status_event(item, 'repaired', remarks, request.user)
+            messages.success(request, f'Marked {len(items)} item(s) repaired.')
             return redirect('tracker:main_warehouse_home')
 
         if action in ('dispatch_to_oem', 'scrap'):
@@ -726,7 +898,10 @@ class ElectronicsActionView(LoginRequiredMixin, View):
                 status_updated_by=request.user,
                 status_updated_at=timezone.now(),
                 electronics_engineer_name=data['electronics_engineer_name'],
-                electronics_initial_observation=data['initial_observation'],
+                electronics_physical_visual_damage=', '.join(data['physical_visual_damage']),
+                electronics_component_status=', '.join(data['component_status']),
+                electronics_power_electrical_faults=', '.join(data['power_electrical_faults']),
+                electronics_system_display_behavior=', '.join(data['system_display_behavior']),
                 electronics_pcb_type=data['pcb_type'],
                 electronics_pcb_issue=data['pcb_issue'],
                 electronics_failure_category=data['failure_category'],
@@ -776,7 +951,11 @@ class DispatchSubmitView(LoginRequiredMixin, View):
         selected_keys = request.POST.getlist('selected_items')
 
         post_data = request.POST.copy()
-        if post_data.get('delivery_partner') == 'other':
+        is_by_hand = post_data.get('delivery_partner') == 'by_hand'
+        if is_by_hand:
+            post_data['delivery_partner'] = ''
+            post_data['custom_delivery_partner'] = 'By Hand'
+        elif post_data.get('delivery_partner') == 'other':
             post_data['delivery_partner'] = ''
         form = DispatchForm(post_data)
 
@@ -787,6 +966,14 @@ class DispatchSubmitView(LoginRequiredMixin, View):
         if not form.is_valid():
             messages.error(request, 'Please correct the errors in the dispatch form.')
             return redirect('tracker:engineer_home')
+
+        # Pickup/LR/challan numbers only matter when a courier is actually
+        # involved -- a By Hand dispatch skips straight to the warehouse.
+        if not is_by_hand:
+            missing = _missing_courier_fields(form)
+            if missing:
+                messages.error(request, f'{", ".join(missing)} required unless dispatching by hand.')
+                return redirect('tracker:engineer_home')
 
         # Recompute the engineer's own pending lines server-side so a
         # tampered request can never dispatch someone else's material or
@@ -804,10 +991,7 @@ class DispatchSubmitView(LoginRequiredMixin, View):
             messages.error(request, 'Selected materials are no longer available to dispatch.')
             return redirect('tracker:engineer_home')
 
-        delivery_partner = form.cleaned_data['delivery_partner']
-        custom_partner_name = form.cleaned_data['custom_delivery_partner'].strip()
-        if not delivery_partner and custom_partner_name:
-            delivery_partner, _ = DeliveryPartner.objects.get_or_create(name=custom_partner_name)
+        delivery_partner = resolve_delivery_partner(form.cleaned_data)
 
         try:
             with transaction.atomic():
@@ -831,6 +1015,7 @@ class DispatchSubmitView(LoginRequiredMixin, View):
                         part_type=line.part_type,
                         faulty_serial=line.faulty_serial,
                         material_name=line.material_name,
+                        problem=line.problem or '',
                         controller_serial=line.controller_serial,
                         si_details=line.si_details,
                         farmer_name=line.farmer_name,

@@ -79,8 +79,9 @@
                         <div class="col" data-label="Material">
                             <span class="material-name">{{ item.material_name }}</span>
                             <span class="part-type">{{ item.get_part_type_display }}</span>
+                            {% if item.problem %}<span class="fault-tag">{{ item.problem }}</span>{% endif %}
                         </div>
-                        <div class="col" data-label="Faulty S/N">{{ item.faulty_serial }}</div>
+                        <div class="col" data-label="Faulty S/N">{% if item.serial_was_corrected %}<span class="corrected-serial" title="Ticket reported {{ item.faulty_serial }}">{{ item.display_faulty_serial }}</span>{% else %}{{ item.faulty_serial }}{% endif %}</div>
                         <div class="col" data-label="Engineer">{{ item.service_person_name }}</div>
                         <div class="col" data-label="Status">
                             <span class="status-badge {% if item.status == 'scrapped' or item.status == 'added_to_stock' or item.status == 'repaired' or item.status == 'tested_ok' %}dispatched{% else %}pending{% endif %}">{% if item.electronics_final_remark %}{{ item.get_electronics_final_remark_display }}{% else %}{{ item.get_status_display }}{% endif %}</span>
@@ -92,7 +93,10 @@
                         <div class="field-pair"><dt>Farmer</dt><dd>{{ item.farmer_name }}</dd></div>
                         <div class="field-pair"><dt>Location</dt><dd>{{ item.location }}</dd></div>
                         <div class="field-pair"><dt>Replacement Date</dt><dd>{{ item.replacement_date|date:"d M Y" }}</dd></div>
+                        <div class="field-pair"><dt>Dispatch Date</dt><dd>{{ item.effective_dispatch.dispatched_at|date:"d M Y" }}</dd></div>
+                        <div class="field-pair"><dt>Delivery Partner</dt><dd>{{ item.effective_dispatch.delivery_partner.name }}</dd></div>
                         <div class="field-pair"><dt>Destination</dt><dd>{{ item.dispatch.destination.name }}</dd></div>
+                        <div class="field-pair"><dt>Pickup No.</dt><dd>{{ item.effective_dispatch.pickup_number }}</dd></div>
                         <div class="field-pair"><dt>LR No.</dt><dd>{{ item.effective_dispatch.lr_number }}</dd></div>
                         <div class="field-pair"><dt>Challan No.</dt><dd>{{ item.effective_dispatch.delivery_challan_number }}</dd></div>
                         {% if item.forward_dispatch %}
@@ -101,6 +105,10 @@
                         {% if item.received_date %}
                             <div class="field-pair"><dt>Received On</dt><dd>{{ item.received_date|date:"d M Y" }}</dd></div>
                             <div class="field-pair"><dt>Serial Match</dt><dd>{% if item.received_serial_matches %}Yes{% else %}No{% endif %}</dd></div>
+                            {% if item.received_serial_no %}
+                                <div class="field-pair"><dt>Ticket Faulty S/N</dt><dd>{{ item.faulty_serial }}</dd></div>
+                                <div class="field-pair"><dt>Received S/N</dt><dd>{{ item.received_serial_no }}</dd></div>
+                            {% endif %}
                             <div class="field-pair"><dt>Reservation No.</dt><dd>{{ item.warehouse_reservation_no }}</dd></div>
                         {% endif %}
                         {% if item.oem_inward_reservation_no %}
@@ -125,7 +133,13 @@
                         {% endif %}
                         {% if item.electronics_engineer_name %}
                             <div class="field-pair"><dt>Electronics Engineer</dt><dd>{{ item.electronics_engineer_name }}</dd></div>
-                            <div class="field-pair"><dt>Initial Observation</dt><dd>{{ item.electronics_initial_observation }}</dd></div>
+                            {% if item.electronics_initial_observation %}
+                                <div class="field-pair"><dt>Initial Observation</dt><dd>{{ item.electronics_initial_observation }}</dd></div>
+                            {% endif %}
+                            <div class="field-pair"><dt>Physical & Visual Damage</dt><dd>{{ item.electronics_physical_visual_damage }}</dd></div>
+                            <div class="field-pair"><dt>Component Status</dt><dd>{{ item.electronics_component_status }}</dd></div>
+                            <div class="field-pair"><dt>Power & Electrical Faults</dt><dd>{{ item.electronics_power_electrical_faults }}</dd></div>
+                            <div class="field-pair"><dt>System & Display Behavior</dt><dd>{{ item.electronics_system_display_behavior }}</dd></div>
                             <div class="field-pair"><dt>PCB Type</dt><dd>{{ item.electronics_pcb_type }}</dd></div>
                             <div class="field-pair"><dt>PCB Issue</dt><dd>{{ item.electronics_pcb_issue }}</dd></div>
                             <div class="field-pair"><dt>Failure Category</dt><dd>{{ item.electronics_failure_category }}</dd></div>
@@ -161,6 +175,7 @@
                         <div class="col" data-label="Material">
                             <span class="material-name">{{ line.material_name }}</span>
                             <span class="part-type">{{ line.part_type_label }}</span>
+                            {% if line.problem %}<span class="fault-tag">{{ line.problem }}</span>{% endif %}
                         </div>
                         <div class="col" data-label="Faulty S/N">{{ line.faulty_serial }}</div>
                         <div class="col" data-label="Engineer">{{ line.service_person_name }}</div>

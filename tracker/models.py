@@ -95,17 +95,24 @@ class ClappiaData(models.Model):
     status = models.CharField(max_length=50)
 
     # Power Card / Control Card have no ticket-provided name of their own --
-    # callers use a fixed label ("Power Card"/"Control Card") instead.
+    # callers use a fixed label ("Power Card"/"Control Card") instead. Their
+    # replacement reason is this one shared field (e.g. "Dry Run"), not a
+    # per-card problem column like the generic material slots have.
     faulty_power_card_no = models.CharField(max_length=255, blank=True, null=True)
     faulty_control_card_no = models.CharField(max_length=255, blank=True, null=True)
+    controller_display_fault = models.CharField(max_length=255, blank=True, null=True)
 
-    # Up to 3 generic replaced parts per visit, each with its own name.
+    # Up to 3 generic replaced parts per visit, each with its own name and
+    # reported fault ("Carbon Plate Damage", "Shaft Damage", etc).
     component_1 = models.CharField(max_length=255, blank=True, null=True)
     component_2 = models.CharField(max_length=255, blank=True, null=True)
     component_3 = models.CharField(max_length=255, blank=True, null=True)
     faulty_part_no_1 = models.CharField(max_length=255, blank=True, null=True)
     faulty_part_no_2 = models.CharField(max_length=255, blank=True, null=True)
     faulty_part_no_3 = models.CharField(max_length=255, blank=True, null=True)
+    problem_1 = models.CharField(max_length=255, blank=True, null=True)
+    problem_2 = models.CharField(max_length=255, blank=True, null=True)
+    problem_3 = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         managed = False
@@ -215,6 +222,7 @@ class DispatchItem(models.Model):
     part_type = models.CharField(max_length=20, choices=PART_TYPE_CHOICES)
     faulty_serial = models.CharField(max_length=255)
     material_name = models.CharField(max_length=255)
+    problem = models.CharField(max_length=255, blank=True, default='')
     controller_serial = models.CharField(max_length=255)
     si_details = models.CharField(max_length=255)
     farmer_name = models.CharField(max_length=255, default='')
@@ -236,11 +244,24 @@ class DispatchItem(models.Model):
     forward_dispatch = models.ForeignKey(
         Dispatch, null=True, blank=True, on_delete=models.SET_NULL, related_name='forwarded_items'
     )
-    # Set once, by the main warehouse's "Receive" action.
+    # Set once, by a warehouse's "Receive" action (Power Card / Control Card
+    # / RMU at the main warehouse only) -- received_date doubles as the
+    # motor/pump receive checklist's date, set by motor_receive_fields below
+    # instead, since a motor/pump has no serial-match step.
     received_date = models.DateField(null=True, blank=True)
     received_serial_matches = models.BooleanField(null=True, blank=True)
     received_serial_no = models.CharField(max_length=255, blank=True, null=True)
     warehouse_reservation_no = models.CharField(max_length=255, blank=True, null=True)
+
+    # Motor/Pump receive checklist -- set once, by either the regional
+    # warehouse's or the main warehouse's "Receive" action (see
+    # is_pending_motor_receive), before an OEM/Scrap/Repaired/Service Center
+    # decision can be made on it.
+    motor_capacity = models.CharField(max_length=50, blank=True, null=True)
+    motor_oem_name = models.CharField(max_length=255, blank=True, null=True)
+    motor_head_size = models.CharField(max_length=50, blank=True, null=True)
+    motor_inch_size = models.CharField(max_length=50, blank=True, null=True)
+    motor_fault = models.CharField(max_length=255, blank=True, null=True)
 
     # Set once, by the main warehouse's "Dispatch to OEM" / "Scrap" action
     # on a motor/pump.
@@ -278,7 +299,15 @@ class DispatchItem(models.Model):
 
     # Electronics' detailed diagnostic checklist, set once when proceeding
     # to a Tested OK / Scrapped decision.
+    # Kept for records from before the single dropdown below was split into
+    # the 4 categorized checklists that replaced it.
     electronics_initial_observation = models.CharField(max_length=255, blank=True, null=True)
+    # Each stores a comma-joined multi-select, same convention as
+    # electronics_sub_category below.
+    electronics_physical_visual_damage = models.CharField(max_length=1000, blank=True, null=True)
+    electronics_component_status = models.CharField(max_length=1000, blank=True, null=True)
+    electronics_power_electrical_faults = models.CharField(max_length=1000, blank=True, null=True)
+    electronics_system_display_behavior = models.CharField(max_length=1000, blank=True, null=True)
     electronics_pcb_type = models.CharField(max_length=255, blank=True, null=True)
     electronics_pcb_issue = models.CharField(max_length=255, blank=True, null=True)
     electronics_failure_category = models.CharField(max_length=255, blank=True, null=True)
@@ -319,6 +348,35 @@ class DispatchItem(models.Model):
         return is_motor_or_pump(self.part_type, self.material_name)
 
     @property
+    def motor_pump_type(self):
+        from .services import motor_pump_type
+        return motor_pump_type(self.material_name)
+
+    @property
+    def is_pending_motor_receive(self):
+        """True for an incoming Motor/Pump still awaiting its receive
+        checklist (capacity/OEM/head/inch/fault) -- required, at either the
+        regional or main warehouse, before an OEM/Scrap/Repaired/Service
+        Center decision can be made on it."""
+        return self.is_motor_or_pump and not self.received_date
+
+    @property
+    def is_pending_card_receive(self):
+        """True for a Power Card / Control Card / RMU at the regional
+        warehouse still awaiting its receive checklist (date + serial
+        match) -- required before Dispatch/Tested OK can be chosen there.
+        (The main warehouse's own card receive step isn't gated by this --
+        it's the only action available to an incoming card there.)"""
+        return not self.is_motor_or_pump and not self.received_date
+
+    @property
+    def is_received_awaiting_disposition(self):
+        """True once an incoming item at the regional warehouse has cleared
+        its receive checklist (motor/pump or card) but has no disposition
+        (OEM/Scrap/Repaired/Dispatch) chosen yet -- the "Received" tab."""
+        return self.status == 'dispatched' and not self.is_pending_motor_receive and not self.is_pending_card_receive
+
+    @property
     def is_p_serial_card(self):
         """A Power/Control Card whose faulty serial starts with 'P' -- these
         skip Service Desk/Electronics entirely and go straight from Receive
@@ -326,6 +384,23 @@ class DispatchItem(models.Model):
         if self.part_type not in ('power_card', 'control_card'):
             return False
         return self.faulty_serial.strip().upper().startswith('P')
+
+    @property
+    def display_faulty_serial(self):
+        """The serial to show anywhere a faulty/serial number is displayed --
+        the warehouse's corrected one (received_serial_no) if its receive
+        checklist found the physical unit didn't match the ticket, otherwise
+        the original ticket-reported faulty_serial.
+
+        faulty_serial itself is never overwritten with the correction: it
+        doubles as the join key get_material_lines_for_engineer uses to spot
+        an already-dispatched Clappia ticket line, so changing it would break
+        that match and let the same physical part be dispatched again."""
+        return self.received_serial_no or self.faulty_serial
+
+    @property
+    def serial_was_corrected(self):
+        return bool(self.received_serial_no)
 
     @property
     def effective_dispatch(self):
