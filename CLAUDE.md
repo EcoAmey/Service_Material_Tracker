@@ -45,7 +45,7 @@ Everything lives in one Django app, `tracker/`:
 - `templates/tracker/` — one template per role home page, plus `admin_*.html` for the four Admin Dashboard sections (Dashboard Overview, User Management, Reports & Analytics, Material Lookup) and `admin_base.html`/`base.html` shells.
 - `static/tracker/` — one `.js` file per page family handling popups, table filter/sort, and row expansion (plain JS, no framework/bundler).
 
-### Things added since V1.2 that are easy to trip over
+### Things added in V1.3 (since V1.2) that are easy to trip over
 
 - **Time zone:** `TIME_ZONE = 'Asia/Kolkata'` (hard-coded in `config/settings.py`, not an env var). Datetimes are still stored in UTC; only display/"today" are IST. Excel export converts with `timezone.localtime` (see `_d` in `views.py`).
 - **Archive (admin only):** `DispatchItem.is_archived` + `ArchivedMaterialLine` (for tickets never dispatched). `DispatchItem.objects` is a manager that **hides archived rows** from every page/report/export; use `DispatchItem.all_objects` only where admin must see them (dashboard, lookup, archive view, and `get_material_lines_for_engineer`'s dispatch join). Archived rows are soft-deleted on purpose -- hard-deleting would let the same Clappia ticket line reappear as "Yet to Dispatch".
