@@ -6,30 +6,10 @@
 {% block admin_content %}
     <h1 class="admin-page-title">Reports &amp; Analytics</h1>
 
-    <div class="admin-chart">
-        <h2>Materials by stage</h2>
-        {% for bar in status_bars %}
-            <div class="admin-bar-row">
-                <div class="admin-bar-label">{{ bar.label }}</div>
-                <div class="admin-bar-track"><div class="admin-bar-fill" style="width: {{ bar.percent }}%;"></div></div>
-                <div class="admin-bar-count">{{ bar.count }}</div>
-            </div>
-        {% empty %}
-            <p class="empty-state">No materials yet.</p>
-        {% endfor %}
-    </div>
-
-    <div class="admin-chart">
-        <h2>Component / fault failures</h2>
-        <p class="admin-page-subtitle">From Electronics' diagnostic checklist (Sub Category), across all materials diagnosed so far.</p>
-        {% for bar in component_bars %}
-            <div class="admin-bar-row">
-                <div class="admin-bar-label">{{ bar.label }}</div>
-                <div class="admin-bar-track"><div class="admin-bar-fill" style="width: {{ bar.percent }}%;"></div></div>
-                <div class="admin-bar-count">{{ bar.count }}</div>
-            </div>
-        {% empty %}
-            <p class="empty-state">No electronics diagnostics recorded yet.</p>
-        {% endfor %}
+    <div class="admin-coming-soon">
+        <span class="admin-nav-badge">Coming soon</span>
+        <h2>This section isn't available yet</h2>
+        <p>Reports and analytics are being built and will appear here once they're ready.</p>
+        <a href="{% url 'tracker:admin_dashboard' %}" class="btn-login">Back to Dashboard Overview</a>
     </div>
 {% endblock %}

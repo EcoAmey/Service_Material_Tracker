@@ -53,6 +53,7 @@ Everything lives in one Django app, `tracker/`:
 - **What a service engineer may see:** only "Dispatched" or "Received at <destination>" plus the date (`engineer_status_label` in `services.py`, `DispatchItem.destination_received_date`). Never expose later stages to the engineer.
 - **Per-item motor/pump receive:** `motor_receive.js` + `_receive_motor_dialog.html`; fields are suffixed with the item pk and read by `_motor_receive_forms`/`_apply_motor_receive` in `views.py`. The OEM dispatch dialogs (`_oem_dialogs.html`) are shared by the regional and main warehouse pages.
 - **Regional warehouse** has no Tested OK / Scrap actions (enforced server-side in `WarehouseActionView`); P-serial cards and received motors/pumps can be dispatched to the OEM.
+- **Reports & Analytics** is a placeholder ("coming soon"): the sidebar item is locked and `AdminReportsView` shows no data. Rebuild the charts before re-enabling the link.
 - **Local test data:** `docker/make_local_test_seed.py` generates `docker/local-test-seed.sql` (dummy tickets/items at every stage) for a throwaway local MySQL -- never run it against RDS.
 
 ### Special-case routing rules to know before touching `DispatchItem` status logic

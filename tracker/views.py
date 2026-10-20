@@ -1,4 +1,3 @@
-from collections import Counter
 from datetime import datetime
 
 from django.contrib import messages
@@ -261,48 +260,14 @@ class AdminUserActionView(AdminRequiredMixin, View):
 
 
 class AdminReportsView(AdminRequiredMixin, TemplateView):
-    """Admin-only: status-distribution and component-failure charts,
-    rendered as simple percentage-of-max bar lists (no charting library)."""
+    """Reports & Analytics is parked as "coming soon": the page shows only a
+    placeholder and computes/exposes no data until the analytics are built."""
 
     template_name = 'tracker/admin_reports.html'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['admin_section'] = 'reports'
-
-        status_counts = Counter(DispatchItem.objects.values_list('status', flat=True))
-        status_labels = dict(DispatchItem.STATUS_CHOICES)
-        max_status_count = max(status_counts.values(), default=1)
-        context['status_bars'] = sorted(
-            (
-                {
-                    'label': status_labels.get(status, status),
-                    'count': count,
-                    'percent': round(count / max_status_count * 100),
-                }
-                for status, count in status_counts.items()
-            ),
-            key=lambda bar: bar['count'],
-            reverse=True,
-        )
-
-        sub_category_counts = Counter()
-        for value in DispatchItem.objects.exclude(electronics_sub_category__isnull=True).exclude(
-            electronics_sub_category=''
-        ).values_list('electronics_sub_category', flat=True):
-            for part in value.split(', '):
-                part = part.strip()
-                if part:
-                    sub_category_counts[part] += 1
-        max_sub_category_count = max(sub_category_counts.values(), default=1)
-        context['component_bars'] = sorted(
-            (
-                {'label': label, 'count': count, 'percent': round(count / max_sub_category_count * 100)}
-                for label, count in sub_category_counts.items()
-            ),
-            key=lambda bar: bar['count'],
-            reverse=True,
-        )
         return context
 
 
