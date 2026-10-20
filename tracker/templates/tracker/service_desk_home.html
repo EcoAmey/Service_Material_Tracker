@@ -2,6 +2,7 @@
 {% load static %}
 
 {% block content %}
+<div class="sticky-filters">
     <div class="toolbar">
         <div class="search-field">
             <input type="search" id="material-search" placeholder="Search by service ID, material, serial...">
@@ -11,7 +12,10 @@
                 <option value="">All part types</option>
                 <option value="power_card">Power Card</option>
                 <option value="control_card">Control Card</option>
-                <option value="material">Motor/Pump</option>
+                <option value="motor">Submersible Motor</option>
+                <option value="submersible_pump">Submersible Pump</option>
+                <option value="surface_pump">Surface Pump</option>
+                <option value="material">Other Material</option>
             </select>
         </div>
         <div class="date-range">
@@ -25,12 +29,15 @@
                 <option value="asc">Oldest first</option>
             </select>
         </div>
-    </div>
+        {% include 'tracker/_export_excel.html' %}
+</div>
 
     <div class="tabs">
+        <button type="button" class="tab-btn" data-tab="all">All</button>
         <button type="button" class="tab-btn active" data-tab="with_service_desk">Pending Inspection</button>
         <button type="button" class="tab-btn" data-tab="with_electronics">With Electronics</button>
     </div>
+</div>
 
     <form id="action-form" method="post" action="{% url 'tracker:service_desk_action' %}">
         {% csrf_token %}
@@ -52,9 +59,10 @@
                 {% for item in incoming_items %}
                     <div class="table-row"
                          data-status="{{ item.status }}"
-                         data-part-type="{{ item.part_type }}"
+                         data-part-type="{{ item.filter_type }}"
                          data-date="{{ item.effective_arrival_date|date:'U' }}"
-                         data-search="{{ item.service_id|lower }} {{ item.material_name|lower }} {{ item.faulty_serial|lower }} {{ item.controller_serial|lower }} {{ item.farmer_name|lower }} {{ item.location|lower }}">
+                         data-export-key="i:{{ item.pk }}"
+                     data-search="{{ item.service_id|lower }} {{ item.material_name|lower }} {{ item.faulty_serial|lower }} {{ item.controller_serial|lower }} {{ item.farmer_name|lower }} {{ item.location|lower }} {{ item.dispatch.lr_number|lower }} {{ item.dispatch.delivery_challan_number|lower }} {{ item.forward_dispatch.lr_number|lower }} {{ item.forward_dispatch.delivery_challan_number|lower }} {{ item.oem_dispatch_lr_no|default_if_none:''|lower }} {{ item.oem_dispatch_challan_no|default_if_none:''|lower }}">
                         <div class="row-main">
                             <div class="col-check">
                                 {% if item.is_pending_for_service_desk %}
@@ -65,7 +73,7 @@
                             <div class="col" data-label="Machine No">{{ item.controller_serial }}</div>
                             <div class="col" data-label="Material">
                                 <span class="material-name">{{ item.material_name }}</span>
-                                <span class="part-type">{{ item.get_part_type_display }}</span>
+                                <span class="part-type">{{ item.type_label }}</span>
                                 {% if item.problem %}<span class="fault-tag">{{ item.problem }}</span>{% endif %}
                             </div>
                             <div class="col" data-label="Faulty S/N">{% if item.serial_was_corrected %}<span class="corrected-serial" title="Ticket reported {{ item.faulty_serial }}">{{ item.display_faulty_serial }}</span>{% else %}{{ item.faulty_serial }}{% endif %}</div>
@@ -76,6 +84,8 @@
                             <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
                         </div>
                         <div class="row-details" hidden>
+                            <div class="field-pair"><dt>Assigned to Service Desk</dt><dd>{{ item.assigned_to_service_desk_at|date:"d M Y, H:i" }}</dd></div>
+                            {% if item.assigned_to_electronics_at %}<div class="field-pair"><dt>Assigned to Electronics</dt><dd>{{ item.assigned_to_electronics_at|date:"d M Y, H:i" }}</dd></div>{% endif %}
                             <div class="field-pair"><dt>Dispatch Date</dt><dd>{{ item.effective_dispatch.dispatched_at|date:"d M Y" }}</dd></div>
                             <div class="field-pair"><dt>Delivery Partner</dt><dd>{{ item.effective_dispatch.delivery_partner.name }}</dd></div>
                             <div class="field-pair"><dt>Destination</dt><dd>{{ item.effective_dispatch.destination.name }}</dd></div>
@@ -171,5 +181,6 @@
 {% endblock %}
 
 {% block scripts %}
-    <script src="{% static 'tracker/service_desk.js' %}?v=2"></script>
+    <script src="{% static 'tracker/export_excel.js' %}?v=1"></script>
+    <script src="{% static 'tracker/service_desk.js' %}?v=4"></script>
 {% endblock %}

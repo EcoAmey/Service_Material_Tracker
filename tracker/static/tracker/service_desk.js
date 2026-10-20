@@ -117,7 +117,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const partType = partTypeFilter ? partTypeFilter.value : '';
     let visibleCount = 0;
     rows.forEach((row) => {
-      const matchesTab = row.dataset.status === activeTab;
+      // A search term looks across every tab, so a match is never hidden
+      // just because it lives in a different one.
+      const matchesTab = term !== '' || activeTab === 'all' || row.dataset.status === activeTab;
       const matchesSearch = (row.dataset.search || '').includes(term);
       const matchesPartType = !partType || row.dataset.partType === partType;
       const matchesDate = passesDateRange(row);

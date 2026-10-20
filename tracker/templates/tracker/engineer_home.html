@@ -2,6 +2,7 @@
 {% load static %}
 
 {% block content %}
+<div class="sticky-filters">
     <div class="toolbar">
         <div class="search-field">
             <input type="search" id="material-search" placeholder="Search by service ID, material, serial...">
@@ -11,7 +12,10 @@
                 <option value="">All part types</option>
                 <option value="power_card">Power Card</option>
                 <option value="control_card">Control Card</option>
-                <option value="material">Motor/Pump</option>
+                <option value="motor">Submersible Motor</option>
+                <option value="submersible_pump">Submersible Pump</option>
+                <option value="surface_pump">Surface Pump</option>
+                <option value="material">Other Material</option>
             </select>
         </div>
         <div class="date-range">
@@ -25,12 +29,15 @@
                 <option value="asc">Oldest first</option>
             </select>
         </div>
-    </div>
+        {% include 'tracker/_export_excel.html' %}
+</div>
 
     <div class="tabs">
+        <button type="button" class="tab-btn" data-tab="all">All</button>
         <button type="button" class="tab-btn active" data-tab="pending">Pending</button>
         <button type="button" class="tab-btn" data-tab="dispatched">Dispatched</button>
     </div>
+</div>
 
     <form id="dispatch-form" method="post" action="{% url 'tracker:dispatch_submit' %}">
         {% csrf_token %}
@@ -52,9 +59,10 @@
                 {% for line in material_lines %}
                     <div class="table-row"
                          data-status="{% if line.is_dispatched %}dispatched{% else %}pending{% endif %}"
-                         data-part-type="{{ line.part_type }}"
+                         data-part-type="{{ line.filter_type }}"
                          data-date="{{ line.replacement_date|date:'U' }}"
-                         data-search="{{ line.service_id|lower }} {{ line.material_name|lower }} {{ line.faulty_serial|lower }} {{ line.controller_serial|lower }} {{ line.farmer_name|lower }} {{ line.location|lower }}">
+                         data-export-key="l:{{ line.key }}"
+                     data-search="{{ line.service_id|lower }} {{ line.material_name|lower }} {{ line.faulty_serial|lower }} {{ line.controller_serial|lower }} {{ line.farmer_name|lower }} {{ line.location|lower }} {{ line.lr_number|lower }} {{ line.delivery_challan_number|lower }}">
                         <div class="row-main">
                             <div class="col-check">
                                 {% if not line.is_dispatched %}
@@ -65,13 +73,13 @@
                             <div class="col" data-label="Machine No">{{ line.controller_serial }}</div>
                             <div class="col" data-label="Material">
                                 <span class="material-name">{{ line.material_name }}</span>
-                                <span class="part-type">{{ line.part_type_label }}</span>
+                                <span class="part-type">{{ line.type_label }}</span>
                                 {% if line.problem %}<span class="fault-tag">{{ line.problem }}</span>{% endif %}
                             </div>
                             <div class="col" data-label="Faulty S/N">{{ line.faulty_serial }}</div>
                             <div class="col" data-label="Status">
                                 {% if line.is_dispatched %}
-                                    <span class="status-badge dispatched">Dispatched</span>
+                                    <span class="status-badge dispatched">{{ line.status_label|default:"Dispatched" }}</span>
                                 {% else %}
                                     <span class="status-badge pending">Pending</span>
                                 {% endif %}
@@ -88,6 +96,7 @@
                                 <div class="field-pair"><dt>Dispatch Date</dt><dd>{{ line.dispatch_date|date:"d M Y" }}</dd></div>
                                 <div class="field-pair"><dt>Delivery Partner</dt><dd>{{ line.delivery_partner_name }}</dd></div>
                                 <div class="field-pair"><dt>Dispatch Location</dt><dd>{{ line.destination_name }}</dd></div>
+                                {% if line.received_date %}<div class="field-pair"><dt>Received On</dt><dd>{{ line.received_date|date:"d M Y" }}</dd></div>{% endif %}
                                 <div class="field-pair"><dt>Pickup No.</dt><dd>{{ line.pickup_number }}</dd></div>
                                 <div class="field-pair"><dt>LR No.</dt><dd>{{ line.lr_number }}</dd></div>
                                 <div class="field-pair"><dt>Challan No.</dt><dd>{{ line.delivery_challan_number }}</dd></div>
@@ -159,5 +168,6 @@
 {% endblock %}
 
 {% block scripts %}
-    <script src="{% static 'tracker/dispatch.js' %}?v=4"></script>
+    <script src="{% static 'tracker/export_excel.js' %}?v=1"></script>
+    <script src="{% static 'tracker/dispatch.js' %}?v=6"></script>
 {% endblock %}

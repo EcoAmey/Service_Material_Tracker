@@ -1,0 +1,45 @@
+{# Dispatch to OEM dialogs shared by the main and regional warehouse pages: #}
+{# motor/pump (inward + outward reservation) and P-serial card (LR / DC / outward). #}
+    <dialog id="motor-dialog">
+        <div class="dialog-content">
+            <h2 id="motor-dialog-title">Dispatch to OEM</h2>
+            <div class="field">
+                <label for="id_inward_reservation_no">Inward reservation number</label>
+                <input type="text" name="inward_reservation_no" id="id_inward_reservation_no" form="action-form">
+            </div>
+            <div class="field">
+                <label for="id_outward_reservation_no">Outward reservation number</label>
+                <input type="text" name="outward_reservation_no" id="id_outward_reservation_no" form="action-form">
+            </div>
+            <div class="field">
+                <label for="id_motor_remarks">Remarks (optional)</label>
+                <textarea name="motor_remarks" id="id_motor_remarks" form="action-form" rows="3"></textarea>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="motor-cancel" class="btn-cancel">Cancel</button>
+                <button type="submit" form="action-form" class="btn-submit">Confirm</button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog id="card-oem-dialog">
+        <div class="dialog-content">
+            <h2>Dispatch to OEM</h2>
+            <div class="field">
+                <label for="id_card_oem_lr_no">LR number</label>
+                <input type="text" name="card_oem_lr_no" id="id_card_oem_lr_no" form="action-form">
+            </div>
+            <div class="field">
+                <label for="id_card_oem_challan_no">DC number</label>
+                <input type="text" name="card_oem_challan_no" id="id_card_oem_challan_no" form="action-form">
+            </div>
+            <div class="field">
+                <label for="id_card_oem_outward_reservation_no">Outward reservation number</label>
+                <input type="text" name="card_oem_outward_reservation_no" id="id_card_oem_outward_reservation_no" form="action-form">
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="card-oem-cancel" class="btn-cancel">Cancel</button>
+                <button type="submit" form="action-form" class="btn-submit">Confirm</button>
+            </div>
+        </div>
+    </dialog>

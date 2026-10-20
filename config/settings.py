@@ -151,7 +151,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# Indian Standard Time. Datetimes are still stored in UTC (USE_TZ below);
+# this only controls how they're shown and what "today" means.
+TIME_ZONE = 'Asia/Kolkata'
 
 USE_I18N = True
 

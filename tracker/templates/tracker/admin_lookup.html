@@ -16,9 +16,9 @@
         {% for item in results %}
             <div class="admin-result-card">
                 <div class="admin-result-header">
-                    <h3>{{ item.service_id }} &mdash; {{ item.material_name }} ({{ item.get_part_type_display }})</h3>
+                    <h3>{{ item.service_id }} &mdash; {{ item.material_name }} ({{ item.type_label }})</h3>
                     <span class="status-badge {% if item.status == 'scrapped' or item.status == 'added_to_stock' or item.status == 'repaired' or item.status == 'tested_ok' %}dispatched{% else %}pending{% endif %}">
-                        {% if item.electronics_final_remark %}{{ item.get_electronics_final_remark_display }}{% else %}{{ item.get_status_display }}{% endif %}
+                        {{ item.admin_status_label }}{% if item.is_archived %} (Archived){% endif %}
                     </span>
                 </div>
                 <div class="field-pair"><dt>Machine No</dt><dd>{{ item.controller_serial }}</dd></div>
@@ -49,8 +49,8 @@
         {% for line in pending_results %}
             <div class="admin-result-card">
                 <div class="admin-result-header">
-                    <h3>{{ line.service_id }} &mdash; {{ line.material_name }} ({{ line.part_type_label }})</h3>
-                    <span class="status-badge pending">Yet to Dispatch</span>
+                    <h3>{{ line.service_id }} &mdash; {{ line.material_name }} ({{ line.type_label }})</h3>
+                    <span class="status-badge pending">Yet to Dispatch{% if line.is_archived %} (Archived){% endif %}</span>
                 </div>
                 <div class="field-pair"><dt>Machine No</dt><dd>{{ line.controller_serial }}</dd></div>
                 <div class="field-pair"><dt>Faulty S/N</dt><dd>{{ line.faulty_serial }}</dd></div>

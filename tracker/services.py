@@ -2,7 +2,9 @@ from collections import namedtuple
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from .models import ClappiaData, DispatchItem, DispatchItemStatusEvent, User
+from .models import (
+    ArchivedMaterialLine, ClappiaData, DispatchItem, DispatchItemStatusEvent, User,
+)
 
 # ez_service holds records going back to 2019 (lakhs of rows) -- only
 # tickets registered on or after this date are considered. Rows with no
@@ -35,7 +37,8 @@ BLANK_SENTINELS = {'', '-1'}
 
 DispatchMeta = namedtuple(
     'DispatchMeta',
-    'dispatched_at partner_name destination_name pickup_number lr_number delivery_challan_number',
+    'dispatched_at partner_name destination_name pickup_number lr_number delivery_challan_number '
+    'status received_date final_remark is_archived dest_received_date',
 )
 
 
@@ -51,6 +54,34 @@ def is_motor_or_pump(part_type, material_name):
         return False
     name = (material_name or '').lower()
     return any(keyword in name for keyword in MOTOR_PUMP_KEYWORDS)
+
+
+def engineer_status_label(status, received_date, destination_name):
+    """All a service engineer gets to know about a dispatched material:
+    whether it has reached the place it was sent to. Anything past the
+    destination's receive step (service desk, electronics, scrap, ...) is
+    not theirs to see. A forwarded item was necessarily received first."""
+    if status != 'dispatched' or received_date is not None:
+        return f'Received at {destination_name}'
+    return 'Dispatched'
+
+
+def type_key(part_type, material_name):
+    """Filter/segregation key: power_card, control_card, motor,
+    submersible_pump, surface_pump, or material (anything else)."""
+    if is_motor_or_pump(part_type, material_name):
+        return motor_pump_type(material_name)
+    return part_type
+
+
+def type_label(part_type, material_name):
+    key = type_key(part_type, material_name)
+    if key == 'motor':
+        return 'Submersible Motor' if 'submersible' in (material_name or '').lower() else 'Motor'
+    return {
+        'power_card': 'Power Card', 'control_card': 'Control Card',
+        'submersible_pump': 'Submersible Pump', 'surface_pump': 'Surface Pump',
+    }.get(key, 'Material')
 
 
 def motor_pump_type(material_name):
@@ -89,6 +120,17 @@ class MaterialLine:
     pickup_number: str
     lr_number: str
     delivery_challan_number: str
+    is_archived: bool = False
+    status_label: str = ''
+    received_date: object = None  # when the destination received it (engineer-facing)
+
+    @property
+    def filter_type(self):
+        return type_key(self.part_type, self.material_name)
+
+    @property
+    def type_label(self):
+        return type_label(self.part_type, self.material_name)
 
     @property
     def key(self):
@@ -100,7 +142,7 @@ class MaterialLine:
         return f'{self.service_id}|{self.slot}|{self.faulty_serial}'
 
 
-def get_material_lines_for_engineer(email=None):
+def get_material_lines_for_engineer(email=None, include_archived=False):
     """Every material replaced, one row per replaced part -- for one
     engineer, or every engineer if email is omitted (used by the admin
     dashboard to show items still pending dispatch).
@@ -123,10 +165,12 @@ def get_material_lines_for_engineer(email=None):
         }
     dispatch_info = {
         (service_id, part_type, faulty_serial): DispatchMeta(*rest)
-        for service_id, part_type, faulty_serial, *rest in DispatchItem.objects.values_list(
+        for service_id, part_type, faulty_serial, *rest in DispatchItem.all_objects.values_list(
             'service_id', 'part_type', 'faulty_serial',
             'dispatch__dispatched_at', 'dispatch__delivery_partner__name', 'dispatch__destination__name',
             'dispatch__pickup_number', 'dispatch__lr_number', 'dispatch__delivery_challan_number',
+            'status', 'received_date', 'electronics_final_remark', 'is_archived',
+            'destination_received_date',
         )
     }
 
@@ -166,6 +210,11 @@ def get_material_lines_for_engineer(email=None):
                 service_person_name=ticket.engineer_name,
                 replacement_date=replacement_date,
                 is_dispatched=dispatch_meta is not None,
+                received_date=dispatch_meta.dest_received_date if dispatch_meta else None,
+                status_label=(
+                    engineer_status_label(dispatch_meta.status, dispatch_meta.received_date, dispatch_meta.destination_name)
+                    if dispatch_meta else ''
+                ),
                 slot=faulty_field,
                 problem=problem,
                 dispatch_date=dispatch_meta.dispatched_at if dispatch_meta else None,
@@ -176,7 +225,15 @@ def get_material_lines_for_engineer(email=None):
                 delivery_challan_number=dispatch_meta.delivery_challan_number if dispatch_meta else None,
             )
 
-    lines = list(lines_by_key.values())
+    archived_keys = set(ArchivedMaterialLine.objects.values_list('service_id', 'slot', 'faulty_serial'))
+    lines = []
+    for key, line in lines_by_key.items():
+        # Archived either as a not-yet-dispatched line, or because its
+        # dispatched item was archived -- both stay admin-only.
+        meta_archived = bool(line.is_dispatched and dispatch_info[(line.service_id, line.part_type, line.faulty_serial)].is_archived)
+        line.is_archived = key in archived_keys or meta_archived
+        if include_archived or not line.is_archived:
+            lines.append(line)
     lines.sort(key=lambda line: line.replacement_date, reverse=True)
     return lines
 
@@ -197,6 +254,7 @@ def _items_ever_at_stage(status):
         DispatchItem.objects.filter(status_events__status=status)
         .distinct()
         .select_related('dispatch', 'dispatch__destination', 'forward_dispatch__destination')
+        .prefetch_related('status_events')
         .order_by('-created_at')
     )
 

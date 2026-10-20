@@ -1,0 +1,5 @@
+{# Download Excel: posts the keys of the rows currently shown (see export_excel.js). #}
+<form method="post" action="{% url 'tracker:export_excel' %}" id="export-excel-form" class="export-excel">
+    {% csrf_token %}
+    <button type="button" id="export-excel-btn" class="bulk-btn">Download Excel</button>
+</form>

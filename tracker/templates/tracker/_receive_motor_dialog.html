@@ -1,0 +1,26 @@
+{# Receive Motor/Pump dialog shared by the regional and main warehouse pages. #}
+{# One block of fields per selected item is built by motor_receive.js. #}
+<dialog id="receive-motor-dialog">
+    <div class="dialog-content motor-receive-content">
+        <h2>Receive Motor/Pump</h2>
+        <div class="field">
+            <label for="id_motor_received_date">Receive Date (all items)</label>
+            <input type="date" name="motor_received_date" id="id_motor_received_date" form="action-form">
+        </div>
+        <div class="motor-receive-toolbar">
+            <span>Fill in the specification for each item.</span>
+            <button type="button" id="motor-copy-first" class="btn-cancel" hidden>Copy first item's specs to the rest</button>
+        </div>
+        <div id="motor-receive-list"></div>
+        <div class="dialog-actions">
+            <button type="button" id="receive-motor-cancel" class="btn-cancel">Cancel</button>
+            <button type="submit" form="action-form" class="btn-submit">Confirm Receive</button>
+        </div>
+    </div>
+</dialog>
+
+{{ motor_capacity_choices|json_script:"motor-capacity-choices" }}
+{{ motor_head_size_choices|json_script:"motor-head-size-choices" }}
+{{ motor_inch_size_choices|json_script:"motor-inch-size-choices" }}
+{{ motor_surface_oem_choices|json_script:"motor-surface-oem-choices" }}
+{{ submersible_oem_choices|json_script:"submersible-oem-choices" }}

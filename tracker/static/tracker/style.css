@@ -520,6 +520,12 @@ body:has(.auth-page) {
   grid-template-columns: 22px 0.85fr 0.75fr 1.05fr 0.75fr 0.7fr 0.8fr 0.75fr 20px;
 }
 
+/* Electronics: Service Desk's assigned date plus the transfer-to-Electronics date. */
+.cols-electronics .table-header-row,
+.cols-electronics .row-main {
+  grid-template-columns: 22px 0.85fr 0.75fr 1.05fr 0.75fr 0.9fr 0.9fr 0.75fr 20px;
+}
+
 /* Service Desk and Electronics: LR No./Challan No. move into the
    collapsible details instead, replaced by a single "assigned to Service
    Desk" date column. */
@@ -528,11 +534,51 @@ body:has(.auth-page) {
   grid-template-columns: 22px 0.85fr 0.75fr 1.05fr 0.75fr 0.9fr 0.75fr 20px;
 }
 
-/* Admin Dashboard Overview: no checkbox column (read-only, no bulk
-   actions), adds an Engineer column. */
+/* Admin Dashboard Overview: checkbox column (bulk archive), adds an
+   Engineer column. */
 .cols-admin .table-header-row,
 .cols-admin .row-main {
-  grid-template-columns: 1fr 0.85fr 1.1fr 0.85fr 0.9fr 0.9fr 20px;
+  grid-template-columns: 22px 1fr 0.85fr 1.1fr 0.85fr 0.9fr 0.9fr 20px;
+}
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.select-before {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.bulk-btn.secondary {
+  background: none;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+
+.bulk-bar[hidden] {
+  display: none;
+}
+
+.bulk-btn {
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
 }
 
 .material-table.compact {
@@ -894,3 +940,65 @@ dialog::backdrop {
   color: var(--color-on-primary);
   font-weight: 600;
 }
+
+/* Search/filters/tabs stay pinned under the page header while the list
+   scrolls. --sticky-top is set from the header's real height by a tiny
+   script in base.html / admin_base.html. Off on phones, where the wrapped
+   filters would take most of the screen. */
+.sticky-filters {
+  position: sticky;
+  top: var(--sticky-top, 0px);
+  z-index: 4;
+  background: var(--color-bg);
+}
+
+@media (max-width: 720px) {
+  .sticky-filters {
+    position: static;
+  }
+}
+
+/* Receive Motor/Pump dialog: one block of specs per selected item. */
+.motor-receive-content {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.motor-receive-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.motor-receive-item {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 12px 4px;
+  margin-bottom: 10px;
+}
+
+.motor-receive-item legend {
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0 6px;
+}
+
+.export-excel {
+  margin: 0;
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+}
+
+/* Same height, radius and type size as the search/filter fields beside it. */
+.export-excel .bulk-btn {
+  padding: 10px 18px;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+

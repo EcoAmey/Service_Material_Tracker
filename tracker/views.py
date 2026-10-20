@@ -1,4 +1,5 @@
 from collections import Counter
+from datetime import datetime
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -33,7 +34,7 @@ from .forms import (
     WarehouseRemarksForm,
     resolve_delivery_partner,
 )
-from .models import DeliveryPartner, Dispatch, DispatchItem, DispatchLocation, User
+from .models import ArchivedMaterialLine, DeliveryPartner, Dispatch, DispatchItem, DispatchLocation, User
 from .services import (
     get_electronics_items,
     get_material_lines_for_engineer,
@@ -84,17 +85,71 @@ class AdminDashboardView(AdminRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['admin_section'] = 'dashboard'
-        context['items'] = DispatchItem.objects.select_related(
-            'dispatch', 'dispatch__destination', 'forward_dispatch__destination'
-        ).order_by('-created_at')
-        pending_lines = [line for line in get_material_lines_for_engineer() if not line.is_dispatched]
+        items = list(DispatchItem.all_objects.select_related(
+            'dispatch', 'dispatch__destination', 'forward_dispatch__destination', 'forward_dispatch__dispatched_by'
+        ).prefetch_related('status_events').order_by('-created_at'))
+
+        # "Profile" filter: besides engineers (matched by the name on the
+        # ticket), every warehouse / service desk / electronics login can be
+        # picked. An item belongs to a login if that login recorded any
+        # action on it, or -- for a regional warehouse, which only ever sees
+        # what's sent to its own location -- if it was sent there (matched by
+        # name, the same way that user's own page does).
+        staff_users = list(User.objects.filter(
+            role__in=['regwarehouse', 'warehouse', 'servicedesk', 'electronics']
+        ).order_by('role', 'name'))
+        regional_by_location = {u.name.lower(): u.pk for u in staff_users if u.role == 'regwarehouse'}
+        for item in items:
+            ids = {e.changed_by_id for e in item.status_events.all() if e.changed_by_id}
+            if item.status_updated_by_id:
+                ids.add(item.status_updated_by_id)
+            if item.forward_dispatch_id:
+                ids.add(item.forward_dispatch.dispatched_by_id)
+            for location in (item.dispatch.destination, item.forward_dispatch.destination if item.forward_dispatch_id else None):
+                if location and location.name.lower() in regional_by_location:
+                    ids.add(regional_by_location[location.name.lower()])
+            item.actor_tokens = ' '.join(f'u{i}' for i in sorted(ids))
+        context['items'] = items
+        role_labels = dict(User.ROLE_CHOICES)
+        context['staff_users'] = [(u.pk, f'{u.name} ({role_labels[u.role]})') for u in staff_users]
+        pending_lines = [
+            line for line in get_material_lines_for_engineer(include_archived=True) if not line.is_dispatched
+        ]
         context['pending_lines'] = pending_lines
         engineer_names = set(
-            DispatchItem.objects.exclude(service_person_name='').values_list('service_person_name', flat=True)
+            DispatchItem.all_objects.exclude(service_person_name='').values_list('service_person_name', flat=True)
         )
         engineer_names.update(line.service_person_name for line in pending_lines if line.service_person_name)
         context['engineer_names'] = sorted(engineer_names)
         return context
+
+
+class AdminArchiveItemView(AdminRequiredMixin, View):
+    """Bulk-hides dispatched items and/or not-yet-dispatched material lines
+    from every page and report (archive), or brings them back (restore).
+    Nothing is deleted."""
+
+    def post(self, request, *args, **kwargs):
+        restore = request.POST.get('action') == 'restore'
+        item_ids = request.POST.getlist('item_ids')
+        line_keys = request.POST.getlist('line_keys')
+        if not item_ids and not line_keys:
+            messages.error(request, 'Select at least one item.')
+            return redirect('tracker:admin_dashboard')
+
+        count = DispatchItem.all_objects.filter(pk__in=item_ids).update(
+            is_archived=not restore, archived_at=None if restore else timezone.now()
+        )
+        for line_key in line_keys:
+            # Not-yet-dispatched material: key is service_id|slot|faulty_serial.
+            service_id, slot, faulty_serial = (line_key.split('|', 2) + ['', ''])[:3]
+            lookup = {'service_id': service_id, 'slot': slot, 'faulty_serial': faulty_serial}
+            if restore:
+                count += ArchivedMaterialLine.objects.filter(**lookup).delete()[0]
+            else:
+                count += ArchivedMaterialLine.objects.get_or_create(**lookup)[1]
+        messages.success(request, f"{count} item(s) {'restored' if restore else 'archived'}.")
+        return redirect('tracker:admin_dashboard')
 
 
 class AdminUserManagementView(AdminRequiredMixin, TemplateView):
@@ -264,7 +319,7 @@ class AdminMaterialLookupView(AdminRequiredMixin, TemplateView):
         context['query'] = query
         if query:
             context['results'] = (
-                DispatchItem.objects.filter(
+                DispatchItem.all_objects.filter(
                     Q(service_id__icontains=query)
                     | Q(controller_serial__icontains=query)
                     | Q(faulty_serial__icontains=query)
@@ -278,7 +333,7 @@ class AdminMaterialLookupView(AdminRequiredMixin, TemplateView):
             # it'd otherwise never show up in a lookup search.
             needle = query.lower()
             context['pending_results'] = [
-                line for line in get_material_lines_for_engineer()
+                line for line in get_material_lines_for_engineer(include_archived=True)
                 if not line.is_dispatched and (
                     needle in line.service_id.lower()
                     or needle in (line.controller_serial or '').lower()
@@ -355,18 +410,53 @@ def _missing_courier_fields(form):
     ]
 
 
-def _motor_receive_form(post_data):
-    """Builds a MotorReceiveForm from its dialog's uniquely-prefixed field
-    names ('motor_capacity', etc) -- every dialog's fields live on one
-    shared <form> via form="action-form", so names can't collide."""
-    return MotorReceiveForm({
-        'received_date': post_data.get('motor_received_date', ''),
-        'capacity': post_data.get('motor_capacity', ''),
-        'oem_name': post_data.get('motor_oem_name', ''),
-        'head_size': post_data.get('motor_head_size', ''),
-        'inch_size': post_data.get('motor_inch_size', ''),
-        'remarks': post_data.get('motor_receive_remarks', ''),
-    })
+def _motor_receive_forms(post_data, items):
+    """One MotorReceiveForm per selected item -- each motor/pump gets its own
+    capacity/OEM/head/inch (fields suffixed with the item's pk), sharing only
+    the receive date. Returns {item.pk: form}, or None if any is invalid.
+    Head/Inch size are required for a pump but not for a bare motor."""
+    forms = {}
+    for item in items:
+        suffix = f'_{item.pk}'
+        form = MotorReceiveForm({
+            'received_date': post_data.get('motor_received_date', ''),
+            'capacity': post_data.get('motor_capacity' + suffix, ''),
+            'oem_name': post_data.get('motor_oem_name' + suffix, ''),
+            'head_size': post_data.get('motor_head_size' + suffix, ''),
+            'inch_size': post_data.get('motor_inch_size' + suffix, ''),
+            'remarks': post_data.get('motor_receive_remarks' + suffix, ''),
+        })
+        if not form.is_valid():
+            return None
+        data = form.cleaned_data
+        if item.motor_pump_type != 'motor' and not (data['head_size'] and data['inch_size']):
+            return None
+        forms[item.pk] = form
+    return forms
+
+
+def _is_first_stop(item, receiving_location_type):
+    """True when this receive is at the place the engineer sent the item to
+    (not a second hop after a regional warehouse forwarded it)."""
+    return item.dispatch.destination.location_type == receiving_location_type
+
+
+def _apply_motor_receive(items, forms, user, receiving_location_type):
+    with transaction.atomic():
+        for item in items:
+            data = forms[item.pk].cleaned_data
+            extra = {'destination_received_date': data['received_date']} if _is_first_stop(item, receiving_location_type) else {}
+            DispatchItem.objects.filter(pk=item.pk).update(
+                **extra,
+                received_date=data['received_date'],
+                motor_capacity=data['capacity'],
+                motor_oem_name=data['oem_name'],
+                motor_head_size=data['head_size'],
+                motor_inch_size=data['inch_size'],
+                status_remarks=data['remarks'],
+                status_updated_by=user,
+                status_updated_at=timezone.now(),
+            )
 
 
 class WarehouseActionView(LoginRequiredMixin, View):
@@ -380,9 +470,12 @@ class WarehouseActionView(LoginRequiredMixin, View):
 
     login_url = 'tracker:login'
 
-    SIMPLE_ACTIONS = {'tested_ok', 'repaired', 'dispatched_to_oem', 'scrapped'}
-    CARD_ACTIONS = {'dispatch_forward', 'tested_ok'}
-    MOTOR_ACTIONS = {'dispatch_forward', 'repaired', 'dispatched_to_oem', 'scrapped'}
+    # Tested OK / Scrap aren't offered at a regional warehouse -- a card can
+    # only be forwarded on (or, if its serial starts with P, dispatched to
+    # the OEM), and a scrap decision belongs to the main warehouse.
+    SIMPLE_ACTIONS = {'repaired'}
+    CARD_ACTIONS = {'dispatch_forward', 'card_dispatch_to_oem'}
+    MOTOR_ACTIONS = {'dispatch_forward', 'repaired', 'dispatch_to_oem'}
 
     def post(self, request, *args, **kwargs):
         action = request.POST.get('action')
@@ -418,6 +511,7 @@ class WarehouseActionView(LoginRequiredMixin, View):
                 return redirect('tracker:warehouse_home')
             DispatchItem.objects.filter(pk__in=[item.pk for item in items]).update(
                 received_date=form.cleaned_data['received_date'],
+                destination_received_date=form.cleaned_data['received_date'],
                 received_serial_matches=form.cleaned_data['serial_matches'] == 'yes',
                 received_serial_no=form.cleaned_data['received_serial_no'],
                 warehouse_reservation_no=form.cleaned_data['reservation_no'],
@@ -433,20 +527,11 @@ class WarehouseActionView(LoginRequiredMixin, View):
             if not items:
                 messages.error(request, 'Select at least one incoming motor/pump to receive.')
                 return redirect('tracker:warehouse_home')
-            form = _motor_receive_form(request.POST)
-            if not form.is_valid():
-                messages.error(request, 'Please correct the errors in the receive form.')
+            forms = _motor_receive_forms(request.POST, items)
+            if forms is None:
+                messages.error(request, 'Please complete every field for each motor/pump in the receive form.')
                 return redirect('tracker:warehouse_home')
-            DispatchItem.objects.filter(pk__in=[item.pk for item in items]).update(
-                received_date=form.cleaned_data['received_date'],
-                motor_capacity=form.cleaned_data['capacity'],
-                motor_oem_name=form.cleaned_data['oem_name'],
-                motor_head_size=form.cleaned_data['head_size'],
-                motor_inch_size=form.cleaned_data['inch_size'],
-                status_remarks=form.cleaned_data['remarks'],
-                status_updated_by=request.user,
-                status_updated_at=timezone.now(),
-            )
+            _apply_motor_receive(items, forms, request.user, DispatchLocation.RSC)
             messages.success(request, f'Received {len(items)} item(s).')
             return redirect('tracker:warehouse_home')
 
@@ -460,6 +545,9 @@ class WarehouseActionView(LoginRequiredMixin, View):
                 return redirect('tracker:warehouse_home')
             if item.is_pending_card_receive:
                 messages.error(request, 'Receive this card before choosing an action.')
+                return redirect('tracker:warehouse_home')
+            if action == 'card_dispatch_to_oem' and not item.is_p_serial_card:
+                messages.error(request, 'Only a P-serial card can be dispatched to the OEM.')
                 return redirect('tracker:warehouse_home')
 
         item_pks = [item.pk for item in items]
@@ -480,6 +568,49 @@ class WarehouseActionView(LoginRequiredMixin, View):
             for item in items:
                 record_status_event(item, action, form.cleaned_data['remarks'], request.user)
             messages.success(request, f'Updated {len(items)} item(s).')
+            return redirect('tracker:warehouse_home')
+
+        if action == 'dispatch_to_oem':
+            motor_data = request.POST.copy()
+            motor_data['remarks'] = request.POST.get('motor_remarks', '')
+            form = MotorDispositionForm(motor_data)
+            if not form.is_valid():
+                messages.error(request, 'Please enter the inward and outward reservation numbers.')
+                return redirect('tracker:warehouse_home')
+            remarks = form.cleaned_data['remarks']
+            DispatchItem.objects.filter(pk__in=item_pks).update(
+                status='dispatched_to_oem',
+                status_remarks=remarks,
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+                oem_inward_reservation_no=form.cleaned_data['inward_reservation_no'],
+                oem_outward_reservation_no=form.cleaned_data['outward_reservation_no'],
+            )
+            for item in items:
+                record_status_event(item, 'dispatched_to_oem', remarks, request.user)
+            messages.success(request, f'Dispatched {len(items)} item(s) to OEM.')
+            return redirect('tracker:warehouse_home')
+
+        if action == 'card_dispatch_to_oem':
+            form = CardOemDispatchForm({
+                'lr_no': request.POST.get('card_oem_lr_no', ''),
+                'challan_no': request.POST.get('card_oem_challan_no', ''),
+                'outward_reservation_no': request.POST.get('card_oem_outward_reservation_no', ''),
+            })
+            if not form.is_valid():
+                messages.error(request, 'Please enter the LR number, DC number and outward reservation number.')
+                return redirect('tracker:warehouse_home')
+            DispatchItem.objects.filter(pk__in=item_pks).update(
+                status='dispatched_to_oem',
+                oem_dispatch_lr_no=form.cleaned_data['lr_no'],
+                oem_dispatch_challan_no=form.cleaned_data['challan_no'],
+                oem_outward_reservation_no=form.cleaned_data['outward_reservation_no'],
+                status_updated_by=request.user,
+                status_updated_at=timezone.now(),
+            )
+            for item in items:
+                record_status_event(item, 'dispatched_to_oem', '', request.user)
+            messages.success(request, f'Dispatched {len(items)} item(s) to OEM.')
             return redirect('tracker:warehouse_home')
 
         if action == 'dispatch_forward':
@@ -652,6 +783,12 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
                 status_updated_at=timezone.now(),
             )
 
+            # Only a receive at the item's original destination counts as "the
+            # destination received it" -- not the second hop after a forward.
+            DispatchItem.objects.filter(
+                pk__in=[item.pk for item in items if _is_first_stop(item, DispatchLocation.WAREHOUSE)]
+            ).update(destination_received_date=form.cleaned_data['received_date'])
+
             # P-serial Power/Control Cards skip Service Desk/Electronics
             # entirely -- straight to an OEM/Scrap decision instead.
             card_items = [item for item in items if item.is_p_serial_card]
@@ -683,20 +820,11 @@ class MainWarehouseActionView(LoginRequiredMixin, View):
             return redirect('tracker:main_warehouse_home')
 
         if action == 'receive_motor':
-            form = _motor_receive_form(request.POST)
-            if not form.is_valid():
-                messages.error(request, 'Please correct the errors in the receive form.')
+            forms = _motor_receive_forms(request.POST, items)
+            if forms is None:
+                messages.error(request, 'Please complete every field for each motor/pump in the receive form.')
                 return redirect('tracker:main_warehouse_home')
-            DispatchItem.objects.filter(pk__in=item_pks).update(
-                received_date=form.cleaned_data['received_date'],
-                motor_capacity=form.cleaned_data['capacity'],
-                motor_oem_name=form.cleaned_data['oem_name'],
-                motor_head_size=form.cleaned_data['head_size'],
-                motor_inch_size=form.cleaned_data['inch_size'],
-                status_remarks=form.cleaned_data['remarks'],
-                status_updated_by=request.user,
-                status_updated_at=timezone.now(),
-            )
+            _apply_motor_receive(items, forms, request.user, DispatchLocation.WAREHOUSE)
             messages.success(request, f'Received {len(items)} item(s).')
             return redirect('tracker:main_warehouse_home')
 
@@ -1064,3 +1192,120 @@ class DispatchSubmitView(LoginRequiredMixin, View):
 
         messages.success(request, f'Dispatched {len(items_to_create)} item(s) successfully.')
         return redirect('tracker:engineer_home')
+
+
+EXPORT_HEADERS = [
+    'Service ID', 'Machine No', 'Type', 'Material', 'Problem', 'Faulty S/N', 'Ticket Faulty S/N', 'Received S/N',
+    'Engineer', 'Farmer', 'Location', 'Status', 'Replacement Date', 'Dispatch Date', 'Destination', 'Received On',
+    'Delivery Partner', 'Pickup No', 'LR No', 'Challan No', 'Forwarded To', 'Forward LR No', 'Forward Challan No',
+    'Reservation No', 'Assigned to Service Desk', 'Assigned to Electronics', 'Capacity', 'OEM Name', 'Head Size', 'Inch Size', 'OEM Dispatch LR No', 'OEM Dispatch Challan No',
+    'OEM Inward Res. No', 'OEM Outward Res. No', 'Scrap Condition', 'SD Problem', 'Electronics Engineer',
+    'Electronics Remark', 'Electronics Outward Res. No', 'Stock Outward Res. No', 'Remarks', 'Updated By', 'Updated On',
+]
+
+
+ENGINEER_EXPORT_COLUMNS = 20  # through 'Challan No'
+
+
+def _d(value, fmt='%d %b %Y'):
+    if not value:
+        return ''
+    if isinstance(value, datetime) and timezone.is_aware(value):
+        value = timezone.localtime(value)  # stored in UTC; the sheet should read in IST
+    return value.strftime(fmt)
+
+
+def _item_export_row(item):
+    dispatch, fwd = item.dispatch, item.forward_dispatch
+    status = 'Archived' if item.is_archived else item.admin_status_label
+    return [
+        item.service_id, item.controller_serial, item.type_label, item.material_name, item.problem,
+        item.display_faulty_serial, item.faulty_serial if item.serial_was_corrected else '',
+        item.received_serial_no or '', item.service_person_name, item.farmer_name, item.location, status,
+        _d(item.replacement_date), _d(dispatch.dispatched_at), dispatch.destination.name, _d(item.received_date),
+        dispatch.delivery_partner.name, dispatch.pickup_number, dispatch.lr_number, dispatch.delivery_challan_number,
+        fwd.destination.name if fwd else '', fwd.lr_number if fwd else '', fwd.delivery_challan_number if fwd else '',
+        item.warehouse_reservation_no or '',
+        _d(item.assigned_to_service_desk_at, '%d %b %Y %H:%M'), _d(item.assigned_to_electronics_at, '%d %b %Y %H:%M'),
+        item.motor_capacity or '',
+        item.motor_oem_name or '', item.motor_head_size or '', item.motor_inch_size or '',
+        item.oem_dispatch_lr_no or '', item.oem_dispatch_challan_no or '', item.oem_inward_reservation_no or '',
+        item.oem_outward_reservation_no or '', item.get_scrap_condition_display() if item.scrap_condition else '',
+        item.inspection_problem or '', item.electronics_engineer_name or '',
+        item.get_electronics_final_remark_display() if item.electronics_final_remark else '',
+        item.electronics_outward_reservation_no or '', item.stock_outward_reservation_no or '', item.status_remarks,
+        item.status_updated_by.name if item.status_updated_by else '', _d(item.status_updated_at, '%d %b %Y %H:%M'),
+    ]
+
+
+def _line_export_row(line):
+    """A ticket line, dispatched or not yet -- only the columns a ticket
+    (and its dispatch, if any) can fill in."""
+    status = 'Yet to Dispatch' if not line.is_dispatched else (line.status_label or 'Dispatched')
+    if line.is_archived:
+        status = 'Archived'
+    return [
+        line.service_id, line.controller_serial, line.type_label, line.material_name, line.problem or '',
+        line.faulty_serial, '', '', line.service_person_name, line.farmer_name, line.location, status,
+        _d(line.replacement_date), _d(line.dispatch_date), line.destination_name or '', _d(line.received_date), line.delivery_partner_name or '',
+        line.pickup_number or '', line.lr_number or '', line.delivery_challan_number or '',
+    ] + [''] * (len(EXPORT_HEADERS) - ENGINEER_EXPORT_COLUMNS)
+
+
+class ExportExcelView(LoginRequiredMixin, View):
+    """Excel download of the list on the user's own home page. The page
+    posts the keys of the rows currently shown (after tab/search/filters);
+    each is re-checked against what this role may see, so a tampered request
+    can't pull anything else. With no keys, everything the role can see."""
+
+    login_url = 'tracker:login'
+
+    def _sources(self, user):
+        """(DispatchItem queryset, ticket lines) for this role."""
+        role = user.role
+        if role == 'admin':
+            # Dispatched lines already appear as DispatchItems.
+            pending = [l for l in get_material_lines_for_engineer(include_archived=True) if not l.is_dispatched]
+            return DispatchItem.all_objects.all(), pending
+        if role == 'engineer':
+            return DispatchItem.objects.none(), get_material_lines_for_engineer(user.email)
+        if role == 'regwarehouse':
+            location = DispatchLocation.objects.filter(name__iexact=user.name).first()
+            items = DispatchItem.objects.filter(dispatch__destination=location) if location else DispatchItem.objects.none()
+            return items, []
+        if role == 'warehouse':
+            return _get_main_warehouse_items(), []
+        if role == 'servicedesk':
+            return get_service_desk_items(), []
+        if role == 'electronics':
+            return get_electronics_items(), []
+        return DispatchItem.objects.none(), []
+
+    def post(self, request, *args, **kwargs):
+        from .excel import build_xlsx
+
+        items, lines = self._sources(request.user)
+        keys = request.POST.getlist('keys')
+        if keys:
+            item_ids = [k[2:] for k in keys if k.startswith('i:') and k[2:].isdigit()]
+            line_keys = {k[2:] for k in keys if k.startswith('l:')}
+            items = items.filter(pk__in=item_ids)
+            lines = [line for line in lines if line.key in line_keys]
+        rows = [_item_export_row(i) for i in items.select_related(
+            'dispatch__destination', 'dispatch__delivery_partner', 'forward_dispatch__destination', 'status_updated_by'
+        ).prefetch_related('status_events').order_by('-created_at')]
+        rows += [_line_export_row(line) for line in lines]
+        headers = EXPORT_HEADERS
+        if request.user.role == 'engineer':
+            # An engineer only knows the dispatch details (the first
+            # ENGINEER_EXPORT_COLUMNS columns), not what happens afterwards.
+            headers = EXPORT_HEADERS[:ENGINEER_EXPORT_COLUMNS]
+            rows = [row[:ENGINEER_EXPORT_COLUMNS] for row in rows]
+
+        from django.http import HttpResponse
+        response = HttpResponse(
+            build_xlsx(headers, rows),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="materials_{timezone.localdate():%Y%m%d}.xlsx"'
+        return response

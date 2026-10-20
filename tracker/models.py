@@ -184,6 +184,26 @@ class Dispatch(models.Model):
         return f'Dispatch #{self.pk} by {self.dispatched_by}'
 
 
+def status_label(status, received_date, final_remark):
+    """Human-readable current stage of an item. A warehouse's Receive
+    checklist sets received_date but leaves status unchanged (it only
+    unlocks the next action), so without this a received item would still
+    read 'Dispatched' to the admin and the engineer."""
+    if final_remark:
+        return dict(DispatchItem._meta.get_field('electronics_final_remark').choices).get(final_remark, final_remark)
+    if status == 'dispatched' and received_date:
+        return 'Received at Warehouse'
+    return dict(DispatchItem.STATUS_CHOICES).get(status, status)
+
+
+class ActiveDispatchItemManager(models.Manager):
+    """Default manager: hides admin-archived items from every operational
+    page and report. Use DispatchItem.all_objects to include them."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(is_archived=False)
+
+
 class DispatchItem(models.Model):
     """One material actually dispatched, as part of a Dispatch batch.
 
@@ -249,6 +269,11 @@ class DispatchItem(models.Model):
     # motor/pump receive checklist's date, set by motor_receive_fields below
     # instead, since a motor/pump has no serial-match step.
     received_date = models.DateField(null=True, blank=True)
+    # When the place the engineer originally sent this to (dispatch.destination)
+    # received it -- unlike received_date, never overwritten by a later receive
+    # at the main warehouse after a regional warehouse forwards it on. This is
+    # what the service engineer is shown.
+    destination_received_date = models.DateField(null=True, blank=True)
     received_serial_matches = models.BooleanField(null=True, blank=True)
     received_serial_no = models.CharField(max_length=255, blank=True, null=True)
     warehouse_reservation_no = models.CharField(max_length=255, blank=True, null=True)
@@ -335,6 +360,16 @@ class DispatchItem(models.Model):
     )
     electronics_outward_reservation_no = models.CharField(max_length=255, blank=True, null=True)
 
+    # Soft-delete set by the admin's Archive action. The row is kept (not
+    # deleted) so the unique_together guard and the "already dispatched"
+    # match in get_material_lines_for_engineer keep working -- deleting it
+    # would let the same Clappia ticket line show up as pending again.
+    is_archived = models.BooleanField(default=False)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    objects = ActiveDispatchItemManager()
+    all_objects = models.Manager()
+
     class Meta:
         unique_together = [('service_id', 'part_type', 'faulty_serial')]
 
@@ -399,6 +434,20 @@ class DispatchItem(models.Model):
         return self.received_serial_no or self.faulty_serial
 
     @property
+    def admin_status_label(self):
+        return status_label(self.status, self.received_date, self.electronics_final_remark)
+
+    @property
+    def filter_type(self):
+        from .services import type_key
+        return type_key(self.part_type, self.material_name)
+
+    @property
+    def type_label(self):
+        from .services import type_label
+        return type_label(self.part_type, self.material_name)
+
+    @property
     def serial_was_corrected(self):
         return bool(self.received_serial_no)
 
@@ -413,13 +462,23 @@ class DispatchItem(models.Model):
     def effective_arrival_date(self):
         return self.effective_dispatch.dispatched_at
 
+    def _first_event_at(self, status):
+        # Iterates .all() (not .filter()) so a prefetch_related('status_events')
+        # on the page's queryset serves every row without a query each.
+        times = [e.changed_at for e in self.status_events.all() if e.status == status]
+        return min(times) if times else None
+
     @property
     def assigned_to_service_desk_at(self):
         """When this item first reached Service Desk (Main Warehouse's
         Receive action) -- shown on both the Service Desk and Electronics
         pages, since both display items sourced from that same handoff."""
-        event = self.status_events.filter(status='with_service_desk').first()
-        return event.changed_at if event else None
+        return self._first_event_at('with_service_desk')
+
+    @property
+    def assigned_to_electronics_at(self):
+        """When Service Desk transferred this item to Electronics."""
+        return self._first_event_at('with_electronics')
 
     @property
     def is_pending_for_main_warehouse(self):
@@ -462,6 +521,20 @@ class DispatchItem(models.Model):
         """True once electronics has repaired this item and it is waiting
         for the warehouse to add it back to the service stock."""
         return self.status == 'repaired_by_electronics'
+
+
+class ArchivedMaterialLine(models.Model):
+    """An admin-archived material that was never dispatched, so it has no
+    DispatchItem to flag -- hides that Clappia ticket line from every page
+    (key mirrors MaterialLine.key: service_id|slot|faulty_serial)."""
+
+    service_id = models.CharField(max_length=255)
+    slot = models.CharField(max_length=50)
+    faulty_serial = models.CharField(max_length=255)
+    archived_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = [('service_id', 'slot', 'faulty_serial')]
 
 
 class DispatchItemStatusEvent(models.Model):

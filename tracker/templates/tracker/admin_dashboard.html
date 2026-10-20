@@ -7,6 +7,7 @@
     <h1 class="admin-page-title">Dashboard Overview</h1>
     <p class="admin-page-subtitle">Every material in the system, at whatever stage it's currently at.</p>
 
+<div class="sticky-filters">
     <div class="toolbar">
         <div class="search-field">
             <input type="search" id="material-search" placeholder="Search by service ID, machine no, faulty serial, engineer...">
@@ -16,15 +17,25 @@
                 <option value="">All part types</option>
                 <option value="power_card">Power Card</option>
                 <option value="control_card">Control Card</option>
-                <option value="material">Motor/Pump</option>
+                <option value="motor">Submersible Motor</option>
+                <option value="submersible_pump">Submersible Pump</option>
+                <option value="surface_pump">Surface Pump</option>
+                <option value="material">Other Material</option>
             </select>
         </div>
         <div class="filter-field">
-            <select id="engineer-filter">
-                <option value="">All engineers</option>
-                {% for name in engineer_names %}
-                    <option value="{{ name }}">{{ name }}</option>
-                {% endfor %}
+            <select id="engineer-filter" aria-label="Profile">
+                <option value="">All profiles</option>
+                <optgroup label="Service engineers">
+                    {% for name in engineer_names %}
+                        <option value="{{ name }}">{{ name }}</option>
+                    {% endfor %}
+                </optgroup>
+                <optgroup label="Warehouse, Service Desk &amp; Electronics">
+                    {% for pk, label in staff_users %}
+                        <option value="user:{{ pk }}">{{ label }}</option>
+                    {% endfor %}
+                </optgroup>
             </select>
         </div>
         <div class="date-range">
@@ -38,11 +49,13 @@
                 <option value="asc">Oldest first</option>
             </select>
         </div>
-    </div>
+        {% include 'tracker/_export_excel.html' %}
+</div>
 
     <div class="tabs admin-tabs-wrap">
-        <button type="button" class="tab-btn active" data-tab="dispatched">Pending (Service Engineer)</button>
-        <button type="button" class="tab-btn" data-tab="dispatched_to_warehouse">Warehouse</button>
+        <button type="button" class="tab-btn" data-tab="all">All</button>
+        <button type="button" class="tab-btn active" data-tab="dispatched">Yet to Dispatch (Service Engineer)</button>
+        <button type="button" class="tab-btn" data-tab="dispatched_to_warehouse">At Warehouse</button>
         <button type="button" class="tab-btn" data-tab="with_service_desk">With Service Desk</button>
         <button type="button" class="tab-btn" data-tab="with_electronics">With Electronics</button>
         <button type="button" class="tab-btn" data-tab="pending_oem_scrap">Pending OEM/Scrap</button>
@@ -52,11 +65,27 @@
         <button type="button" class="tab-btn" data-tab="added_to_stock">Added to Stock</button>
         <button type="button" class="tab-btn" data-tab="repaired_or_tested_ok">Repaired / Tested OK</button>
         <button type="button" class="tab-btn" data-tab="scrapped">Scrapped</button>
+        <button type="button" class="tab-btn" data-tab="archived">Archived</button>
     </div>
+
+    <div class="select-before">
+        <label for="select-before-date">Select everything in this tab dated before</label>
+        <input type="date" id="select-before-date">
+        <button type="button" id="select-before-btn" class="bulk-btn secondary">Select</button>
+    </div>
+
+    <form method="post" action="{% url 'tracker:admin_archive_item' %}" id="bulk-archive-form" class="bulk-bar" hidden>
+        {% csrf_token %}
+        <input type="hidden" name="action" id="bulk-action" value="archive">
+        <span id="bulk-count"></span>
+        <button type="submit" id="bulk-submit" class="bulk-btn">Archive selected</button>
+    </form>
+</div>
 
     <div class="table-wrapper">
         <div class="material-table compact cols-admin">
             <div class="table-header-row">
+                <div class="col-check"><input type="checkbox" id="select-all" aria-label="Select all shown"></div>
                 <div>Service ID</div>
                 <div>Machine No</div>
                 <div>Material</div>
@@ -68,23 +97,26 @@
 
             {% for item in items %}
                 <div class="table-row"
-                     data-status="{% if item.status == 'repaired' or item.status == 'tested_ok' %}repaired_or_tested_ok{% else %}{{ item.status }}{% endif %}"
-                     data-part-type="{{ item.part_type }}"
+                     data-status="{% if item.is_archived %}archived{% elif item.status == 'repaired' or item.status == 'tested_ok' %}repaired_or_tested_ok{% elif item.status == 'dispatched' %}dispatched_to_warehouse{% else %}{{ item.status }}{% endif %}"
+                     data-part-type="{{ item.filter_type }}"
                      data-engineer="{{ item.service_person_name }}"
+                     data-actors="{{ item.actor_tokens }}"
                      data-date="{{ item.effective_arrival_date|date:'U' }}"
-                     data-search="{{ item.service_id|lower }} {{ item.material_name|lower }} {{ item.faulty_serial|lower }} {{ item.controller_serial|lower }} {{ item.service_person_name|lower }}">
+                     data-export-key="i:{{ item.pk }}"
+                     data-search="{{ item.service_id|lower }} {{ item.material_name|lower }} {{ item.faulty_serial|lower }} {{ item.controller_serial|lower }} {{ item.service_person_name|lower }} {{ item.dispatch.lr_number|lower }} {{ item.dispatch.delivery_challan_number|lower }} {{ item.forward_dispatch.lr_number|lower }} {{ item.forward_dispatch.delivery_challan_number|lower }} {{ item.oem_dispatch_lr_no|default_if_none:''|lower }} {{ item.oem_dispatch_challan_no|default_if_none:''|lower }}">
                     <div class="row-main">
+                        <div class="col-check"><input type="checkbox" class="row-check" name="item_ids" value="{{ item.pk }}" form="bulk-archive-form" aria-label="Select"></div>
                         <div class="col" data-label="Service ID">{{ item.service_id }}</div>
                         <div class="col" data-label="Machine No">{{ item.controller_serial }}</div>
                         <div class="col" data-label="Material">
                             <span class="material-name">{{ item.material_name }}</span>
-                            <span class="part-type">{{ item.get_part_type_display }}</span>
+                            <span class="part-type">{{ item.type_label }}</span>
                             {% if item.problem %}<span class="fault-tag">{{ item.problem }}</span>{% endif %}
                         </div>
                         <div class="col" data-label="Faulty S/N">{% if item.serial_was_corrected %}<span class="corrected-serial" title="Ticket reported {{ item.faulty_serial }}">{{ item.display_faulty_serial }}</span>{% else %}{{ item.faulty_serial }}{% endif %}</div>
                         <div class="col" data-label="Engineer">{{ item.service_person_name }}</div>
                         <div class="col" data-label="Status">
-                            <span class="status-badge {% if item.status == 'scrapped' or item.status == 'added_to_stock' or item.status == 'repaired' or item.status == 'tested_ok' %}dispatched{% else %}pending{% endif %}">{% if item.electronics_final_remark %}{{ item.get_electronics_final_remark_display }}{% else %}{{ item.get_status_display }}{% endif %}</span>
+                            <span class="status-badge {% if item.status == 'scrapped' or item.status == 'added_to_stock' or item.status == 'repaired' or item.status == 'tested_ok' %}dispatched{% else %}pending{% endif %}">{{ item.admin_status_label }}</span>
                         </div>
                         <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
                     </div>
@@ -153,6 +185,8 @@
                         {% if item.stock_outward_reservation_no %}
                             <div class="field-pair"><dt>Stock Outward Reservation No.</dt><dd>{{ item.stock_outward_reservation_no }}</dd></div>
                         {% endif %}
+                        {% if item.assigned_to_service_desk_at %}<div class="field-pair"><dt>Assigned to Service Desk</dt><dd>{{ item.assigned_to_service_desk_at|date:"d M Y, H:i" }}</dd></div>{% endif %}
+                        {% if item.assigned_to_electronics_at %}<div class="field-pair"><dt>Assigned to Electronics</dt><dd>{{ item.assigned_to_electronics_at|date:"d M Y, H:i" }}</dd></div>{% endif %}
                         <div class="field-pair"><dt>Action Remarks</dt><dd>{{ item.status_remarks|default:"-" }}</dd></div>
                         <div class="field-pair"><dt>Updated By</dt><dd>{{ item.status_updated_by.name|default:"-" }}</dd></div>
                         <div class="field-pair"><dt>Updated On</dt><dd>{{ item.status_updated_at|date:"d M Y, H:i"|default:"-" }}</dd></div>
@@ -164,23 +198,26 @@
 
             {% for line in pending_lines %}
                 <div class="table-row"
-                     data-status="dispatched"
-                     data-part-type="{{ line.part_type }}"
+                     data-status="{% if line.is_archived %}archived{% else %}dispatched{% endif %}"
+                     data-part-type="{{ line.filter_type }}"
                      data-engineer="{{ line.service_person_name }}"
+                     data-actors=""
                      data-date="{{ line.replacement_date|date:'U' }}"
-                     data-search="{{ line.service_id|lower }} {{ line.material_name|lower }} {{ line.faulty_serial|lower }} {{ line.controller_serial|lower }} {{ line.service_person_name|lower }}">
+                     data-export-key="l:{{ line.key }}"
+                     data-search="{{ line.service_id|lower }} {{ line.material_name|lower }} {{ line.faulty_serial|lower }} {{ line.controller_serial|lower }} {{ line.service_person_name|lower }} {{ line.lr_number|lower }} {{ line.delivery_challan_number|lower }}">
                     <div class="row-main">
+                        <div class="col-check"><input type="checkbox" class="row-check" name="line_keys" value="{{ line.key }}" form="bulk-archive-form" aria-label="Select"></div>
                         <div class="col" data-label="Service ID">{{ line.service_id }}</div>
                         <div class="col" data-label="Machine No">{{ line.controller_serial }}</div>
                         <div class="col" data-label="Material">
                             <span class="material-name">{{ line.material_name }}</span>
-                            <span class="part-type">{{ line.part_type_label }}</span>
+                            <span class="part-type">{{ line.type_label }}</span>
                             {% if line.problem %}<span class="fault-tag">{{ line.problem }}</span>{% endif %}
                         </div>
                         <div class="col" data-label="Faulty S/N">{{ line.faulty_serial }}</div>
                         <div class="col" data-label="Engineer">{{ line.service_person_name }}</div>
                         <div class="col" data-label="Status">
-                            <span class="status-badge pending">Yet to Dispatch</span>
+                            <span class="status-badge pending">Yet to Dispatch{% if line.is_archived %} (Archived){% endif %}</span>
                         </div>
                         <button type="button" class="expand-toggle" aria-label="Show more details">&#8964;</button>
                     </div>
@@ -198,5 +235,6 @@
 {% endblock %}
 
 {% block admin_scripts %}
-    <script src="{% static 'tracker/admin_dashboard.js' %}?v=1"></script>
+    <script src="{% static 'tracker/export_excel.js' %}?v=1"></script>
+    <script src="{% static 'tracker/admin_dashboard.js' %}?v=7"></script>
 {% endblock %}

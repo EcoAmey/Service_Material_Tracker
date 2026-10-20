@@ -45,6 +45,16 @@ Everything lives in one Django app, `tracker/`:
 - `templates/tracker/` — one template per role home page, plus `admin_*.html` for the four Admin Dashboard sections (Dashboard Overview, User Management, Reports & Analytics, Material Lookup) and `admin_base.html`/`base.html` shells.
 - `static/tracker/` — one `.js` file per page family handling popups, table filter/sort, and row expansion (plain JS, no framework/bundler).
 
+### Things added since V1.2 that are easy to trip over
+
+- **Time zone:** `TIME_ZONE = 'Asia/Kolkata'` (hard-coded in `config/settings.py`, not an env var). Datetimes are still stored in UTC; only display/"today" are IST. Excel export converts with `timezone.localtime` (see `_d` in `views.py`).
+- **Archive (admin only):** `DispatchItem.is_archived` + `ArchivedMaterialLine` (for tickets never dispatched). `DispatchItem.objects` is a manager that **hides archived rows** from every page/report/export; use `DispatchItem.all_objects` only where admin must see them (dashboard, lookup, archive view, and `get_material_lines_for_engineer`'s dispatch join). Archived rows are soft-deleted on purpose -- hard-deleting would let the same Clappia ticket line reappear as "Yet to Dispatch".
+- **Excel export:** `ExportExcelView` (`/export/`), stdlib-only writer in `tracker/excel.py`. Pages post the keys of the rows currently shown; the server re-checks each against what that role may see. Engineers only get the first `ENGINEER_EXPORT_COLUMNS` columns.
+- **What a service engineer may see:** only "Dispatched" or "Received at <destination>" plus the date (`engineer_status_label` in `services.py`, `DispatchItem.destination_received_date`). Never expose later stages to the engineer.
+- **Per-item motor/pump receive:** `motor_receive.js` + `_receive_motor_dialog.html`; fields are suffixed with the item pk and read by `_motor_receive_forms`/`_apply_motor_receive` in `views.py`. The OEM dispatch dialogs (`_oem_dialogs.html`) are shared by the regional and main warehouse pages.
+- **Regional warehouse** has no Tested OK / Scrap actions (enforced server-side in `WarehouseActionView`); P-serial cards and received motors/pumps can be dispatched to the OEM.
+- **Local test data:** `docker/make_local_test_seed.py` generates `docker/local-test-seed.sql` (dummy tickets/items at every stage) for a throwaway local MySQL -- never run it against RDS.
+
 ### Special-case routing rules to know before touching `DispatchItem` status logic
 
 - A Power/Control Card whose `faulty_serial` starts with `P` (`DispatchItem.is_p_serial_card`) skips Service Desk and Electronics entirely — Main Warehouse's Receive action routes it straight to an OEM/Scrap decision (`pending_oem_scrap`).

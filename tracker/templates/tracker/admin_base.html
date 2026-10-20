@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <title>{% block title %}Admin Dashboard{% endblock %} - Service Material Tracker</title>
-    <link rel="stylesheet" href="{% static 'tracker/style.css' %}?v=15">
+    <link rel="stylesheet" href="{% static 'tracker/style.css' %}?v=23">
     <link rel="stylesheet" href="{% static 'tracker/admin.css' %}?v=9">
 </head>
 <body class="admin-body">
@@ -93,6 +93,12 @@
         </div>
     </div>
 
+    <script>
+        (function () {
+            var h = document.querySelector('.app-header, .admin-topbar');
+            if (h) document.documentElement.style.setProperty('--sticky-top', h.offsetHeight + 'px');
+        })();
+    </script>
     <script src="{% static 'tracker/admin.js' %}?v=3"></script>
     {% block admin_scripts %}{% endblock %}
 </body>
